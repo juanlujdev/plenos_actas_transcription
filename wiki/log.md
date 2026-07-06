@@ -13,3 +13,5 @@ Registro append-only. Una entrada por cada `ingest`/`query`/`lint` ejecutado sob
 ## [2026-07-06] ingest | Bot Telegram + Cloudflare Worker + GitHub Actions: diseño del flujo de publicación de eventos
 ## [2026-07-06] ingest | Spec: Bandos originales, desc_short, modal en News y fix Gemma 4
 ## [2026-07-06] ingest | Spec: LLM Wiki (patrón Karpathy) con Obsidian
+
+## [2026-07-06] lint | 0 hallazgos
