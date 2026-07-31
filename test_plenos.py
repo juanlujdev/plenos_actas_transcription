@@ -136,6 +136,51 @@ test("tope: exactamente MAX_VUELTAS correcciones", contador["correcciones"], 3)
 test("tope: devuelve los problemas pendientes", len(pendientes), 1)
 
 
+# ── render ────────────────────────────────────────────────────────────────────
+print("── render ────────────────────────────────────────────────────────────")
+
+from plenos_render import render_markdown, render_pdf, _latin
+
+md = render_markdown(_informe_v1, "Pleno ordinario — 26 de junio de 2026",
+                     "https://www.youtube.com/watch?v=abc123", [])
+test("md: título", md.startswith("# Pleno ordinario — 26 de junio de 2026"), True)
+test("md: sección resumen", "## Resumen ejecutivo" in md, True)
+test("md: sección orden del día", "## Orden del día y votaciones" in md, True)
+test("md: sección intervenciones", "## Principales intervenciones" in md, True)
+test("md: sección ruegos", "## Ruegos y preguntas" in md, True)
+test("md: enlace al vídeo", "https://www.youtube.com/watch?v=abc123" in md, True)
+test("md: votación unanimidad", "por unanimidad" in md, True)
+test("md: timestamp de votación", "00:03:12" in md, True)
+test("md: sin bloque no verificado", "no verificado" in md.lower(), False)
+
+md_sin_video = render_markdown(_informe_v1, "Pleno", None, [])
+test("md: sin vídeo no hay enlace", "youtube.com" in md_sin_video, False)
+
+md_con_problemas = render_markdown(_informe_v1, "Pleno", None, [_problema])
+test("md: bloque no verificado presente", "no verificado" in md_con_problemas.lower(), True)
+test("md: detalle del problema", "aprobado 5-2" in md_con_problemas, True)
+
+test("latin: em-dash", _latin("a — b"), "a - b")
+test("latin: comillas tipográficas", _latin("“hola”"), '"hola"')
+test("latin: texto español intacto", _latin("Enguídanos, sesión ¿qué? ¡sí!"),
+     "Enguídanos, sesión ¿qué? ¡sí!")
+
+import tempfile
+_tmp_pdf = os.path.join(tempfile.gettempdir(), "test_pleno.pdf")
+render_pdf(_informe_v1, "Pleno ordinario — 26 de junio de 2026", None, [], _tmp_pdf)
+with open(_tmp_pdf, "rb") as f:
+    cabecera = f.read(5)
+test("pdf: se genera y es un PDF", cabecera, b"%PDF-")
+
+# Test de contenido: verifica que el texto se renderiza sin cortarse
+from pypdf import PdfReader
+reader = PdfReader(_tmp_pdf)
+texto_pdf = "".join([page.extract_text() for page in reader.pages])
+test("pdf: contiene debate completo", "Se informa de las obras." in texto_pdf, True)
+
+os.remove(_tmp_pdf)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:
