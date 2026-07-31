@@ -181,6 +181,68 @@ test("pdf: contiene debate completo", "Se informa de las obras." in texto_pdf, T
 os.remove(_tmp_pdf)
 
 
+# ── funciones puras del pipeline ──────────────────────────────────────────────
+print("── pipeline: RSS, fecha, segmentos, state ────────────────────────────")
+
+from procesar_pleno import (
+    parsear_feed, extraer_fecha, unir_segmentos, extraer_video_id,
+    es_nuevo, registrar_fallo, MAX_INTENTOS,
+)
+
+FEED_EJEMPLO = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>yt:video:AbC123xyz_9</id>
+    <yt:videoId>AbC123xyz_9</yt:videoId>
+    <title>Pleno ordinario 26/06/2026</title>
+    <published>2026-06-27T10:00:00+00:00</published>
+  </entry>
+  <entry>
+    <id>yt:video:Def456uvw_8</id>
+    <yt:videoId>Def456uvw_8</yt:videoId>
+    <title>Pleno extraordinario 3 de mayo de 2026</title>
+    <published>2026-05-04T09:30:00+00:00</published>
+  </entry>
+</feed>"""
+
+videos = parsear_feed(FEED_EJEMPLO)
+test("feed: dos entradas", len(videos), 2)
+test("feed: video_id", videos[0]["video_id"], "AbC123xyz_9")
+test("feed: titulo", videos[0]["titulo"], "Pleno ordinario 26/06/2026")
+test("feed: publicado recortado a fecha", videos[0]["publicado"], "2026-06-27")
+
+test("fecha: dd/mm/yyyy", extraer_fecha("Pleno ordinario 26/06/2026", "2026-01-01"), "2026-06-26")
+test("fecha: dd-mm-yyyy", extraer_fecha("Pleno 5-3-2026", "2026-01-01"), "2026-03-05")
+test("fecha: texto español", extraer_fecha("Pleno extraordinario 3 de mayo de 2026", "2026-01-01"), "2026-05-03")
+test("fecha: sin fecha usa fallback", extraer_fecha("Pleno ordinario", "2026-06-27"), "2026-06-27")
+
+resp_a = {"segments": [{"start": 0.0, "end": 4.0, "text": " Buenas tardes."},
+                        {"start": 4.0, "end": 9.5, "text": " Comienza la sesión."}]}
+resp_b = {"segments": [{"start": 1.2, "end": 6.0, "text": " Segundo fragmento."}]}
+texto = unir_segmentos([(0.0, resp_a), (1800.0, resp_b)])
+test("segmentos: primera línea", texto.splitlines()[0], "[00:00:00] Buenas tardes.")
+test("segmentos: offset del segundo chunk", texto.splitlines()[2], "[00:30:01] Segundo fragmento.")
+
+test("video_id: watch", extraer_video_id("https://www.youtube.com/watch?v=AbC123xyz_9"), "AbC123xyz_9")
+test("video_id: youtu.be", extraer_video_id("https://youtu.be/AbC123xyz_9"), "AbC123xyz_9")
+test("video_id: live", extraer_video_id("https://www.youtube.com/live/AbC123xyz_9"), "AbC123xyz_9")
+test("video_id: basura", extraer_video_id("https://example.com/x"), None)
+
+state = {"procesados": [], "pendientes": {}, "fallidos": []}
+test("state: vídeo nuevo", es_nuevo(state, "v1"), True)
+state["procesados"].append("v1")
+test("state: procesado no es nuevo", es_nuevo(state, "v1"), False)
+state = {"procesados": [], "pendientes": {}, "fallidos": []}
+state = registrar_fallo(state, "v2")
+test("state: primer fallo cuenta 1", state["pendientes"]["v2"], 1)
+test("state: pendiente sigue siendo nuevo (se reintenta)", es_nuevo(state, "v2"), True)
+state = registrar_fallo(registrar_fallo(state, "v2"), "v2")
+test("state: al tercer fallo pasa a fallidos", "v2" in state["fallidos"], True)
+test("state: fallido sale de pendientes", "v2" in state["pendientes"], False)
+test("state: fallido ya no es nuevo", es_nuevo(state, "v2"), False)
+test("state: MAX_INTENTOS es 3", MAX_INTENTOS, 3)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:
