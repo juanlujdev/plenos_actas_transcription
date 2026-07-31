@@ -243,6 +243,35 @@ test("state: fallido ya no es nuevo", es_nuevo(state, "v2"), False)
 test("state: MAX_INTENTOS es 3", MAX_INTENTOS, 3)
 
 
+# ── índice web ────────────────────────────────────────────────────────────────
+print("── índice plenos.json ────────────────────────────────────────────────")
+
+from procesar_pleno import nueva_entrada_indice
+
+_e1 = {"video_id": "v1", "fecha": "2026-05-03", "titulo": "Pleno mayo",
+       "video_url": "https://youtu.be/v1", "pdf": "plenos/2026-05-03-pleno.pdf",
+       "transcripcion": "plenos/2026-05-03-transcripcion.md", "resumen_corto": "..."}
+_e2 = {"video_id": "v2", "fecha": "2026-06-26", "titulo": "Pleno junio",
+       "video_url": "https://youtu.be/v2", "pdf": "plenos/2026-06-26-pleno.pdf",
+       "transcripcion": "plenos/2026-06-26-transcripcion.md", "resumen_corto": "..."}
+
+idx = nueva_entrada_indice({"plenos": []}, _e1)
+idx = nueva_entrada_indice(idx, _e2)
+test("índice: dos entradas", len(idx["plenos"]), 2)
+test("índice: ordenado fecha desc", idx["plenos"][0]["fecha"], "2026-06-26")
+
+_e2bis = dict(_e2, resumen_corto="corregido")
+idx = nueva_entrada_indice(idx, _e2bis)
+test("índice: reprocesar reemplaza, no duplica", len(idx["plenos"]), 2)
+test("índice: entrada reemplazada", idx["plenos"][0]["resumen_corto"], "corregido")
+
+_e3 = {"video_id": None, "fecha": "2026-04-01", "titulo": "Pleno audio", "video_url": None,
+       "pdf": "plenos/2026-04-01-pleno.pdf", "transcripcion": "plenos/2026-04-01-transcripcion.md",
+       "resumen_corto": "..."}
+idx = nueva_entrada_indice(idx, _e3)
+test("índice: entrada sin vídeo admitida", idx["plenos"][2]["video_id"], None)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:
