@@ -58,3 +58,122 @@ class Problema(BaseModel):
 class AuditoriaInforme(BaseModel):
     """Resultado del auditor. Lista vacía = visto bueno."""
     problemas: list[Problema]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Prompts de los tres roles
+# ══════════════════════════════════════════════════════════════════════════════
+
+PROMPT_GENERADOR = """Eres el redactor de informes de los plenos del Ayuntamiento de
+Enguídanos (Cuenca). Recibes la transcripción literal de un pleno, con marcas de tiempo
+[HH:MM:SS] al inicio de cada segmento, y produces un informe estructurado en el JSON
+que se te pide.
+
+REGLAS INNEGOCIABLES:
+1. Usa ÚNICAMENTE información presente en la transcripción. Prohibido inferir,
+   completar huecos o usar conocimiento externo.
+2. Si un dato no consta o no se entiende, usa la vía de escape del esquema:
+   null, "no consta", "sin votación" o "no identificado en la grabación", según el campo.
+3. Cada votación debe llevar el timestamp donde se anuncia su resultado. Los números
+   de votos solo si se dicen en voz alta; si se aprueba "por unanimidad" sin contar,
+   modalidad="unanimidad" y los números en null.
+4. Atribuye una intervención a una persona SOLO si la propia grabación la identifica
+   ("tiene la palabra el concejal de...", "responde la alcaldesa..."). Nunca por deducción.
+5. La transcripción es automática y puede contener errores; si un fragmento es
+   incoherente, no lo interpretes creativamente: descártalo o marca "no consta".
+6. Redacta en español claro y neutro, apto para un documento municipal público.
+"""
+
+PROMPT_AUDITOR = """Eres el auditor de calidad de informes de plenos del Ayuntamiento de
+Enguídanos. Recibes la transcripción literal de un pleno (con marcas [HH:MM:SS]) y un
+informe en JSON generado a partir de ella. Tu único trabajo: encontrar afirmaciones del
+informe que la transcripción NO respalde.
+
+Comprueba una a una las afirmaciones verificables: resultados y números de votaciones,
+nombres y cargos, importes, fechas, acuerdos adoptados y atribuciones de intervenciones.
+
+Para cada problema devuelve: la sección, la afirmación dudosa, el motivo y una cita
+literal de la transcripción como evidencia. Si el informe es fiel a la transcripción,
+devuelve la lista de problemas VACÍA. No inventes problemas menores de estilo: solo
+faltas de fidelidad a la fuente."""
+
+PROMPT_CORRECTOR = """Eres el corrector de informes de plenos del Ayuntamiento de
+Enguídanos. Recibes: la transcripción literal (con marcas [HH:MM:SS]), el informe completo
+en JSON, y la lista de problemas detectados por un auditor (cada uno con su evidencia).
+
+Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
+1. Corrige exclusivamente lo señalado en los problemas, apoyándote en la transcripción.
+2. Si la transcripción no permite resolver un problema, aplica la vía de escape del
+   esquema (null, "no consta", "no identificado en la grabación") en ese dato.
+3. No toques el resto del informe.
+4. Mismas reglas que el redactor: nada que no esté en la transcripción."""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Llamadas a Gemini y bucle de fiabilidad
+# ══════════════════════════════════════════════════════════════════════════════
+
+import os
+
+MAX_VUELTAS = 3
+MODELO_DEFECTO = "gemini-2.5-pro"
+
+
+def _llamar_gemini(instrucciones: str, contenido: str, schema: type[BaseModel]) -> BaseModel:
+    """Una llamada a Gemini con salida estructurada validada contra `schema`."""
+    from google import genai  # import perezoso: los tests no necesitan el SDK
+
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    resp = client.models.generate_content(
+        model=os.environ.get("GEMINI_MODEL", MODELO_DEFECTO),
+        contents=contenido,
+        config={
+            "system_instruction": instrucciones,
+            "response_mime_type": "application/json",
+            "response_schema": schema,
+            "temperature": 0,
+        },
+    )
+    if resp.parsed is not None:
+        return resp.parsed
+    return schema.model_validate_json(resp.text)
+
+
+def generar_informe(transcripcion: str) -> InformePleno:
+    return _llamar_gemini(PROMPT_GENERADOR, f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}", InformePleno)
+
+
+def auditar_informe(transcripcion: str, informe: InformePleno) -> AuditoriaInforme:
+    contenido = (f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+                 f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
+    return _llamar_gemini(PROMPT_AUDITOR, contenido, AuditoriaInforme)
+
+
+def corregir_informe(transcripcion: str, informe: InformePleno, problemas: list[Problema]) -> InformePleno:
+    probs = "\n".join(f"- [{p.seccion}] {p.afirmacion_dudosa} → {p.motivo} (evidencia: {p.evidencia})"
+                      for p in problemas)
+    contenido = (f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+                 f"INFORME COMPLETO (JSON):\n\n{informe.model_dump_json()}\n\n"
+                 f"PROBLEMAS DETECTADOS POR EL AUDITOR:\n{probs}")
+    return _llamar_gemini(PROMPT_CORRECTOR, contenido, InformePleno)
+
+
+def bucle_informe(transcripcion: str, generar=None, auditar=None, corregir=None):
+    """Generador → auditor → (corrector → auditor)* con tope MAX_VUELTAS.
+
+    Devuelve (informe, problemas_pendientes). Si problemas_pendientes no está
+    vacía, el informe se publica con esos puntos marcados como "no verificado".
+    Los kwargs permiten inyectar fakes en los tests.
+    """
+    generar = generar or generar_informe
+    auditar = auditar or auditar_informe
+    corregir = corregir or corregir_informe
+
+    informe = generar(transcripcion)
+    problemas = auditar(transcripcion, informe).problemas
+    vueltas = 0
+    while problemas and vueltas < MAX_VUELTAS:
+        informe = corregir(transcripcion, informe, problemas)
+        vueltas += 1
+        problemas = auditar(transcripcion, informe).problemas
+    return informe, problemas

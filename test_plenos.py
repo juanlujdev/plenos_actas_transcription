@@ -78,6 +78,64 @@ auditoria = AuditoriaInforme.model_validate({"problemas": []})
 test("auditoría sin problemas = visto bueno", auditoria.problemas, [])
 
 
+# ── bucle_informe ─────────────────────────────────────────────────────────────────
+print("── bucle_informe ─────────────────────────────────────────────────────")
+
+from plenos_informe import bucle_informe, MAX_VUELTAS
+
+_informe_v1 = InformePleno.model_validate(INFORME_MINIMO)
+_problema = Problema(seccion="orden_del_dia", afirmacion_dudosa="aprobado 5-2",
+                     motivo="la transcripción dice 4-3", evidencia="[01:02:03] cuatro votos a favor")
+
+test("MAX_VUELTAS es 3", MAX_VUELTAS, 3)
+
+# Caso 1: el auditor da el visto bueno a la primera → 1 auditoría, 0 correcciones
+llamadas = {"generar": 0, "auditar": 0, "corregir": 0}
+def _gen_ok(t):
+    llamadas["generar"] += 1
+    return _informe_v1
+def _aud_ok(t, inf):
+    llamadas["auditar"] += 1
+    return AuditoriaInforme(problemas=[])
+def _cor_nunca(t, inf, probs):
+    llamadas["corregir"] += 1
+    return inf
+
+informe, pendientes = bucle_informe("transcripcion", generar=_gen_ok, auditar=_aud_ok, corregir=_cor_nunca)
+test("visto bueno directo: sin problemas pendientes", pendientes, [])
+test("visto bueno directo: 1 generación", llamadas["generar"], 1)
+test("visto bueno directo: 1 auditoría", llamadas["auditar"], 1)
+test("visto bueno directo: 0 correcciones", llamadas["corregir"], 0)
+
+# Caso 2: 1 problema que la corrección resuelve → 2 auditorías, 1 corrección
+estado = {"auditorias": 0, "correcciones": 0}
+def _aud_una_vez(t, inf):
+    estado["auditorias"] += 1
+    if estado["auditorias"] == 1:
+        return AuditoriaInforme(problemas=[_problema])
+    return AuditoriaInforme(problemas=[])
+def _cor(t, inf, probs):
+    estado["correcciones"] += 1
+    return inf
+
+informe, pendientes = bucle_informe("t", generar=_gen_ok, auditar=_aud_una_vez, corregir=_cor)
+test("corrección resuelve: sin pendientes", pendientes, [])
+test("corrección resuelve: 2 auditorías", estado["auditorias"], 2)
+test("corrección resuelve: 1 corrección", estado["correcciones"], 1)
+
+# Caso 3: el auditor nunca queda contento → tope de 3 correcciones y devuelve pendientes
+contador = {"correcciones": 0}
+def _aud_nunca_contento(t, inf):
+    return AuditoriaInforme(problemas=[_problema])
+def _cor_cuenta(t, inf, probs):
+    contador["correcciones"] += 1
+    return inf
+
+informe, pendientes = bucle_informe("t", generar=_gen_ok, auditar=_aud_nunca_contento, corregir=_cor_cuenta)
+test("tope: exactamente MAX_VUELTAS correcciones", contador["correcciones"], 3)
+test("tope: devuelve los problemas pendientes", len(pendientes), 1)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:
