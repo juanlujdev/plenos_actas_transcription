@@ -41,6 +41,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[doble-validacion-propietario]] | Doble validación de `TELEGRAM_OWNER_ID` (Worker + script) | 2026-07-06 |
 | [[patron-llm-wiki-karpathy]] | El patrón "LLM Wiki" de Karpathy aplicado a este proyecto | 2026-07-06 |
 | [[por-que-cloudflare-worker]] | Por qué Cloudflare y no GitHub Actions directamente para el webhook | 2026-07-30 |
+| [[latencia-workflow-run]] | Por qué el deploy puede tardar hasta ~30 min en dispararse tras un commit del bot, y la solución propuesta (dispatch directo) | 2026-08-07 |
 
 ## Síntesis
 

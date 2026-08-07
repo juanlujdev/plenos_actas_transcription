@@ -23,3 +23,5 @@ Registro append-only. Una entrada por cada `ingest`/`query`/`lint` ejecutado sob
 ## [2026-07-30] ingest | Renombrado github-pages-deploy → hostinger-deploy; actualizado github-actions, sistema-agenda-automatica, eventos-json, gate-deploy-condicional, fuente-unica-eventos-json, overview, index para reflejar migración de hosting a Hostinger (confirmada 2026-07-22, ver memoria project_hosting)
 ## [2026-07-30] ingest | Nuevo concepto por-que-cloudflare-worker: Actions no puede recibir webhooks, de ahí el Worker como endpoint HTTPS intermedio
 ## [2026-07-30] query | Verificación del flujo end-to-end contra el mental model del usuario: la imagen no viaja por Cloudflare (solo file_id), y el orden es main→deploy→Hostinger, no al revés
+
+## [2026-08-07] ingest | Nuevo concepto latencia-workflow-run: diagnóstico del incidente 2026-08-06 (evento confirmado no aparecía en producción durante ~27 min por retraso de entrega del trigger workflow_run, no por caché ni fallo del bot) y solución propuesta (workflow_dispatch directo por API en vez de esperar el evento workflow_run)
