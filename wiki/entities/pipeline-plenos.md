@@ -28,7 +28,7 @@ audio (YouTube o fichero local)
 |---|---|
 | `scripts/procesar_pleno.py` | Orquestación y CLI |
 | `scripts/plenos_informe.py` | Esquemas pydantic, los 3 prompts, llamadas Gemini, bucle |
-| `scripts/plenos_render.py` | JSON → Markdown y → PDF (fpdf2, fuentes core cp1252) |
+| `scripts/plenos_render.py` | JSON → PDF (fpdf2, fuentes core cp1252) |
 | `scripts/test_plenos.py` | Tests de funciones puras (runner casero, sin pytest) |
 | `public/plenos/` | `<fecha>-pleno.pdf`, `-transcripcion.md`, `-informe.json` |
 | `public/data/plenos.json` | Índice que lee `usePlenos` → `PlenosView` |
@@ -58,6 +58,14 @@ Requiere `GROQ_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL` y `ffmpeg` en el PATH.
 - Los timestamps se guardan en el JSON como rastro de verificación, pero **no se imprimen** en el PDF: es un acta, no un índice del vídeo.
 - El informe se redacta **en presente de indicativo** con registro de acta ("Se debate...", "Se acuerda..."), por petición del Ayuntamiento.
 - Usar `python -u`: al redirigir la salida a fichero, sin eso Python la almacena en búfer y parece colgado.
+
+## La transcripción como auditoría
+
+El `.md` que se guarda junto al PDF es **exactamente la misma cadena que recibe Gemini** (`transcribir_chunks()` → variable `transcripcion` → `bucle_informe()` y `write_text()`), no una versión resumida. Es por tanto la prueba de auditoría del informe: si una afirmación del PDF no aparece ahí, el modelo la inventó.
+
+Se publica en `public/plenos/` —o sea, se despliega a Hostinger— pero **deliberadamente no se enlaza desde la web**: es apoyo de verificación, no contenido para el visitante. Decisión consciente del usuario, asumiendo que es accesible por URL directa, porque se trata de una sesión pública que ya está íntegra en YouTube.
+
+La spec preveía además publicar el **informe** en Markdown además de en PDF. No se implementó: `render_markdown()` llegó a escribirse pero nunca se llamó desde el pipeline, y se borró en 2026-08-08 por ser código muerto. El PDF cubre la función de documento legible.
 
 ## Estado
 

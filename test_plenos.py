@@ -139,21 +139,50 @@ test("tope: devuelve los problemas pendientes", len(pendientes), 1)
 # ── render ────────────────────────────────────────────────────────────────────
 print("── render ────────────────────────────────────────────────────────────")
 
-from plenos_render import render_markdown, render_pdf, _latin
+import tempfile
 
-md = render_markdown(_informe_v1, "Pleno ordinario — 26 de junio de 2026",
-                     "https://www.youtube.com/watch?v=abc123", [])
-test("md: título", md.startswith("# Pleno ordinario — 26 de junio de 2026"), True)
-test("md: sección resumen", "## Resumen ejecutivo" in md, True)
-test("md: sección orden del día", "## Orden del día y votaciones" in md, True)
-test("md: sección intervenciones", "## Principales intervenciones" in md, True)
-test("md: sección ruegos", "## Ruegos y preguntas" in md, True)
-test("md: enlace al vídeo", "https://www.youtube.com/watch?v=abc123" in md, True)
-test("md: votación unanimidad", "por unanimidad" in md, True)
+from pypdf import PdfReader
+
+from plenos_render import _latin, _texto_votacion, render_pdf
+
+
+def _texto_de_pdf(informe, titulo, video_url, problemas):
+    """Genera el PDF y devuelve su texto extraído: se comprueba el documento
+    real, no una representación intermedia."""
+    ruta = os.path.join(tempfile.gettempdir(), "test_pleno.pdf")
+    render_pdf(informe, titulo, video_url, problemas, ruta)
+    with open(ruta, "rb") as f:
+        cabecera = f.read(5)
+    texto = "".join(p.extract_text() for p in PdfReader(ruta).pages)
+    os.remove(ruta)
+    return cabecera, texto
+
+
+_cab, _pdf = _texto_de_pdf(_informe_v1, "Pleno ordinario — 26 de junio de 2026",
+                           "https://www.youtube.com/watch?v=abc123", [])
+test("pdf: se genera y es un PDF", _cab, b"%PDF-")
+test("pdf: título", "Pleno ordinario" in _pdf, True)
+test("pdf: sección resumen", "Resumen ejecutivo" in _pdf, True)
+test("pdf: sección orden del día", "Orden del d" in _pdf, True)
+test("pdf: sección intervenciones", "Principales intervenciones" in _pdf, True)
+test("pdf: sección ruegos", "Ruegos y preguntas" in _pdf, True)
+test("pdf: enlace al vídeo", "youtube.com/watch?v=abc123" in _pdf, True)
+test("pdf: votación por unanimidad", "por unanimidad" in _pdf, True)
+test("pdf: sin marcas de tiempo", "00:03:12" in _pdf, False)
+test("pdf: sin bloque no verificado", "no verificado" in _pdf.lower(), False)
+# El debate del 2º punto va justo tras un h3(); si h3 no resetea el cursor,
+# este texto se renderiza fuera del área imprimible (pasó de verdad).
+test("pdf: contiene el debate completo", "Se informa de las obras." in _pdf, True)
+
+_, _pdf_sin_video = _texto_de_pdf(_informe_v1, "Pleno", None, [])
+test("pdf: sin vídeo no hay enlace", "youtube.com" in _pdf_sin_video, False)
+
+_, _pdf_problemas = _texto_de_pdf(_informe_v1, "Pleno", None, [_problema])
+test("pdf: bloque no verificado presente", "no verificado" in _pdf_problemas.lower(), True)
+test("pdf: detalle del problema", "aprobado 5-2" in _pdf_problemas, True)
 
 # Un recuento incompleto no debe rellenarse con ceros: "rechazado, 0 en contra"
 # sería un dato inventado (pasó de verdad en el pleno del 7/7/2026).
-from plenos_render import _texto_votacion
 _v_parcial = Votacion(resultado="rechazado", modalidad="recuento", a_favor=1,
                       en_contra=None, abstenciones=None, timestamp="01:46:08")
 test("votación: recuento parcial no inventa ceros",
@@ -162,35 +191,11 @@ _v_completa = Votacion(resultado="aprobado", modalidad="recuento", a_favor=3,
                        en_contra=3, abstenciones=0, timestamp="00:17:28")
 test("votación: recuento completo se imprime entero",
      _texto_votacion(_v_completa), "Aprobado (3 a favor, 3 en contra, 0 abstenciones).")
-test("md: sin marcas de tiempo en el documento", "00:03:12" in md, False)
-test("md: sin bloque no verificado", "no verificado" in md.lower(), False)
-
-md_sin_video = render_markdown(_informe_v1, "Pleno", None, [])
-test("md: sin vídeo no hay enlace", "youtube.com" in md_sin_video, False)
-
-md_con_problemas = render_markdown(_informe_v1, "Pleno", None, [_problema])
-test("md: bloque no verificado presente", "no verificado" in md_con_problemas.lower(), True)
-test("md: detalle del problema", "aprobado 5-2" in md_con_problemas, True)
 
 test("latin: em-dash", _latin("a — b"), "a - b")
 test("latin: comillas tipográficas", _latin("“hola”"), '"hola"')
 test("latin: texto español intacto", _latin("Enguídanos, sesión ¿qué? ¡sí!"),
      "Enguídanos, sesión ¿qué? ¡sí!")
-
-import tempfile
-_tmp_pdf = os.path.join(tempfile.gettempdir(), "test_pleno.pdf")
-render_pdf(_informe_v1, "Pleno ordinario — 26 de junio de 2026", None, [], _tmp_pdf)
-with open(_tmp_pdf, "rb") as f:
-    cabecera = f.read(5)
-test("pdf: se genera y es un PDF", cabecera, b"%PDF-")
-
-# Test de contenido: verifica que el texto se renderiza sin cortarse
-from pypdf import PdfReader
-reader = PdfReader(_tmp_pdf)
-texto_pdf = "".join([page.extract_text() for page in reader.pages])
-test("pdf: contiene debate completo", "Se informa de las obras." in texto_pdf, True)
-
-os.remove(_tmp_pdf)
 
 
 # ── funciones puras del pipeline ──────────────────────────────────────────────
