@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-procesar_pleno.py - Pipeline de informes de plenos desde YouTube o audio local.
+procesar_pleno.py - Pipeline de informes de plenos. Ejecución manual desde el PC.
 
 Modos:
-    --mode scan                  cron: sondea el feed RSS y procesa vídeos nuevos
-    --url <youtube>              procesa un vídeo concreto (backfill / reintento)
+    --url <youtube>              descarga el audio del vídeo y lo procesa
     --audio <fichero> --fecha YYYY-MM-DD --titulo "..."   procesa un audio local
 
 Flujo: audio → troceado ffmpeg → Groq whisper-large-v3 → bucle Gemini
-(plenos_informe) → render MD/PDF (plenos_render) → public/plenos/ +
-public/data/plenos.json → aviso Telegram.
+(plenos_informe) → render PDF (plenos_render) → public/plenos/ +
+public/data/plenos.json. Después se revisa el PDF y se hace commit a mano.
+
+Se ejecuta en local a propósito: YouTube bloquea las descargas desde IPs de
+datacenter (GitHub Actions) con "confirm you're not a bot", y los plenos son
+mensuales, así que no compensa la infraestructura de sondeo automático.
 """
 
 import argparse
@@ -19,7 +22,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import requests
@@ -29,15 +31,8 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 RAIZ = Path(__file__).resolve().parent.parent
-STATE_PATH = RAIZ / "scripts" / "plenos_state.json"
 INDICE_PATH = RAIZ / "public" / "data" / "plenos.json"
 SALIDA_DIR = RAIZ / "public" / "plenos"
-
-CHANNEL_ID = "UCJ7hictYSiPLcDrPfJJUm-g"
-FEED_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}"
-MAX_INTENTOS = 3
-
-_NS = {"a": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
 
 _MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
           "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10,
@@ -48,22 +43,9 @@ _MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 
 # Funciones puras (cubiertas por test_plenos.py)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def parsear_feed(xml_text: str) -> list[dict]:
-    """Extrae {video_id, titulo, publicado} de cada entry del feed Atom de YouTube."""
-    root = ET.fromstring(xml_text)
-    videos = []
-    for entry in root.findall("a:entry", _NS):
-        videos.append({
-            "video_id": entry.find("yt:videoId", _NS).text,
-            "titulo": entry.find("a:title", _NS).text or "",
-            "publicado": (entry.find("a:published", _NS).text or "")[:10],
-        })
-    return videos
-
-
 def extraer_fecha(titulo: str, fallback: str) -> str:
     """Busca una fecha en el título (26/06/2026, 5-3-2026, '3 de mayo de 2026');
-    si no hay, devuelve el fallback (fecha de publicación)."""
+    si no hay, devuelve el fallback."""
     m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", titulo)
     if m:
         d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -91,20 +73,6 @@ def extraer_video_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def es_nuevo(state: dict, video_id: str) -> bool:
-    return video_id not in state["procesados"] and video_id not in state["fallidos"]
-
-
-def registrar_fallo(state: dict, video_id: str) -> dict:
-    intentos = state["pendientes"].get(video_id, 0) + 1
-    if intentos >= MAX_INTENTOS:
-        state["pendientes"].pop(video_id, None)
-        state["fallidos"].append(video_id)
-    else:
-        state["pendientes"][video_id] = intentos
-    return state
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Audio: descarga y troceado
 # ══════════════════════════════════════════════════════════════════════════════
@@ -122,18 +90,13 @@ def _ejecutar(cmd: list[str]) -> None:
 
 def descargar_audio(url: str, destino_dir: str) -> str:
     """Descarga solo el audio del vídeo con yt-dlp, convertido a m4a mono 32k
-    (4h ≈ 55 MB). Si YouTube bloquea la IP del runner ("confirm you're not a
-    bot"), el error llega al aviso de Telegram; plan B documentado en la spec:
-    secret YT_COOKIES."""
+    (4h ≈ 55 MB). Si alguna vez YouTube bloqueara también esta IP, la salida es
+    bajar el audio a mano y usar --audio."""
     salida = os.path.join(destino_dir, "pleno.m4a")
-    cmd = [sys.executable, "-m", "yt_dlp",
-           "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
-           "--postprocessor-args", "ffmpeg:-ac 1 -b:a 32k",
-           "-o", salida, "--no-progress", url]
-    cookies = os.environ.get("YT_COOKIES_FILE")
-    if cookies:
-        cmd += ["--cookies", cookies]
-    _ejecutar(cmd)
+    _ejecutar([sys.executable, "-m", "yt_dlp",
+               "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
+               "--postprocessor-args", "ffmpeg:-ac 1 -b:a 32k",
+               "-o", salida, "--no-progress", url])
     return salida
 
 
@@ -153,10 +116,24 @@ def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str
 
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = "whisper-large-v3"
+ESPERA_MAXIMA = 3900  # 65 min: cubre la ventana horaria del plan gratuito
+
+
+def _espera_tras_error(respuesta, intento: int) -> float:
+    """Segundos a esperar antes de reintentar. Groq manda `retry-after` cuando
+    se agota el cupo (el horario del plan gratuito pide ~1h, mucho más que el
+    backoff); si no viene la cabecera, backoff exponencial de 2/4/8 min."""
+    cabecera = respuesta.headers.get("retry-after") if respuesta is not None else None
+    if cabecera:
+        try:
+            return min(float(cabecera) + 5, ESPERA_MAXIMA)
+        except ValueError:
+            pass
+    return 120 * 2 ** intento
 
 
 def _reintentar(fn, intentos: int = 4):
-    """Ejecuta fn(); ante 429/5xx reintenta con backoff exponencial (2,4,8 min)."""
+    """Ejecuta fn(); ante 429/5xx reintenta esperando lo que pida el servidor."""
     import time
     for i in range(intentos):
         try:
@@ -165,7 +142,9 @@ def _reintentar(fn, intentos: int = 4):
             status = e.response.status_code if e.response is not None else 0
             if status not in (429, 500, 502, 503) or i == intentos - 1:
                 raise
-            time.sleep(120 * 2 ** i)
+            espera = _espera_tras_error(e.response, i)
+            print(f"  Groq devolvió {status}; esperando {espera / 60:.0f} min y reintentando...")
+            time.sleep(espera)
 
 
 def _transcribir_chunk(ruta: str) -> dict:
@@ -194,7 +173,7 @@ def transcribir_chunks(chunks: list[str], segundos_chunk: int = 1800) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Índice web, Telegram y orquestación
+# Índice web y orquestación
 # ══════════════════════════════════════════════════════════════════════════════
 
 def nueva_entrada_indice(indice: dict, entrada: dict) -> dict:
@@ -206,21 +185,6 @@ def nueva_entrada_indice(indice: dict, entrada: dict) -> dict:
     plenos.append(entrada)
     plenos.sort(key=lambda p: p["fecha"], reverse=True)
     return {"plenos": plenos}
-
-
-def avisar_telegram(texto: str) -> None:
-    """Aviso al propietario. Sin token configurado (ejecución local) no hace nada."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = os.environ.get("TELEGRAM_OWNER_ID")
-    if not token or not chat:
-        print(f"[aviso telegram omitido] {texto}")
-        return
-    try:
-        requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json={"chat_id": chat, "text": texto, "parse_mode": "Markdown"},
-                      timeout=15).raise_for_status()
-    except requests.RequestException as e:
-        print(f"[aviso telegram falló] {e}")
 
 
 def _cargar_json(path: Path, defecto: dict) -> dict:
@@ -236,12 +200,12 @@ def _guardar_json(path: Path, data: dict) -> None:
 
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    fecha: str, video_url: str | None) -> None:
-    """Pipeline completo de un pleno: audio → transcripción → informe → publicación.
+    """Pipeline completo de un pleno: audio → transcripción → informe → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
     """
-    from plenos_informe import bucle_informe
-    from plenos_render import render_markdown, render_pdf
+    from plenos_informe import MAX_VUELTAS, bucle_informe
+    from plenos_render import render_pdf
 
     with tempfile.TemporaryDirectory() as tmp:
         if fuente_audio is None:
@@ -272,11 +236,14 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                "resumen_corto": informe.resumen_corto}
     _guardar_json(INDICE_PATH, nueva_entrada_indice(indice, entrada))
 
-    aviso = f"📋 *Informe de pleno publicado*\n{titulo}\nhttps://enguidanos.es/plenos/{base}.pdf"
+    print(f"\nInforme generado: {ruta_pdf}")
+    print(f"Transcripción:    {ruta_md}")
+    print(f"Índice:           {INDICE_PATH}")
     if pendientes:
-        detalle = "\n".join(f"• {p.afirmacion_dudosa} ({p.motivo})" for p in pendientes)
-        aviso += f"\n\n⚠️ *{len(pendientes)} puntos sin verificar tras {3} vueltas:*\n{detalle}"
-    avisar_telegram(aviso)
+        print(f"\n{len(pendientes)} puntos SIN VERIFICAR tras {MAX_VUELTAS} vueltas del auditor:")
+        for p in pendientes:
+            print(f"  • [{p.seccion}] {p.afirmacion_dudosa} — {p.motivo}")
+    print("\nRevisa el PDF contra la grabación antes de hacer commit.")
 
 
 def _titulo_de_youtube(url: str) -> str:
@@ -287,48 +254,13 @@ def _titulo_de_youtube(url: str) -> str:
     return r.json()["title"]
 
 
-def _scan() -> int:
-    """Modo cron: procesa los vídeos del feed no procesados. Devuelve exit code."""
-    try:
-        state = _cargar_json(STATE_PATH, {"procesados": [], "pendientes": {}, "fallidos": []})
-        xml = requests.get(FEED_URL, timeout=30).text
-    except Exception as e:
-        avisar_telegram(f"❌ *Error al sondear el feed de plenos*\n`{str(e)[:500]}`")
-        return 1
-    fallo = False
-    for v in parsear_feed(xml):
-        if not es_nuevo(state, v["video_id"]):
-            continue
-        url = f"https://www.youtube.com/watch?v={v['video_id']}"
-        fecha = extraer_fecha(v["titulo"], v["publicado"])
-        try:
-            procesar_pleno(None, v["video_id"], v["titulo"], fecha, url)
-            state["procesados"].append(v["video_id"])
-            state["pendientes"].pop(v["video_id"], None)
-        except Exception as e:
-            fallo = True
-            state = registrar_fallo(state, v["video_id"])
-            agotado = v["video_id"] in state["fallidos"]
-            avisar_telegram(
-                f"❌ *Error procesando pleno* `{v['video_id']}`\n{v['titulo']}\n"
-                f"`{str(e)[:500]}`\n"
-                + ("Reintentos agotados: requiere reproceso manual (workflow dispatch)."
-                   if agotado else "Se reintentará en el siguiente ciclo."))
-        _guardar_json(STATE_PATH, state)
-    return 1 if fallo else 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pipeline de informes de plenos")
-    parser.add_argument("--mode", choices=["scan"], help="scan: sondear feed RSS")
-    parser.add_argument("--url", help="URL de un vídeo de YouTube concreto")
+    parser.add_argument("--url", help="URL de un vídeo de YouTube")
     parser.add_argument("--audio", help="Ruta a un fichero de audio local")
     parser.add_argument("--fecha", help="YYYY-MM-DD (con --audio; opcional con --url)")
     parser.add_argument("--titulo", help="Título del pleno (con --audio; opcional con --url)")
     args = parser.parse_args()
-
-    if args.mode == "scan":
-        return _scan()
 
     if args.url:
         video_id = extraer_video_id(args.url)
@@ -342,14 +274,6 @@ def main() -> int:
             return 1
         procesar_pleno(None, video_id, titulo, fecha,
                        f"https://www.youtube.com/watch?v={video_id}")
-        # registrar en state para que el scan no lo reprocese
-        state = _cargar_json(STATE_PATH, {"procesados": [], "pendientes": {}, "fallidos": []})
-        if video_id not in state["procesados"]:
-            state["procesados"].append(video_id)
-        state["pendientes"].pop(video_id, None)
-        if video_id in state["fallidos"]:
-            state["fallidos"].remove(video_id)
-        _guardar_json(STATE_PATH, state)
         return 0
 
     if args.audio:

@@ -182,34 +182,12 @@ os.remove(_tmp_pdf)
 
 
 # ── funciones puras del pipeline ──────────────────────────────────────────────
-print("── pipeline: RSS, fecha, segmentos, state ────────────────────────────")
+print("── pipeline: fecha, segmentos, esperas ───────────────────────────────")
 
 from procesar_pleno import (
-    parsear_feed, extraer_fecha, unir_segmentos, extraer_video_id,
-    es_nuevo, registrar_fallo, MAX_INTENTOS,
+    extraer_fecha, unir_segmentos, extraer_video_id, _espera_tras_error,
+    ESPERA_MAXIMA,
 )
-
-FEED_EJEMPLO = """<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">
-  <entry>
-    <id>yt:video:AbC123xyz_9</id>
-    <yt:videoId>AbC123xyz_9</yt:videoId>
-    <title>Pleno ordinario 26/06/2026</title>
-    <published>2026-06-27T10:00:00+00:00</published>
-  </entry>
-  <entry>
-    <id>yt:video:Def456uvw_8</id>
-    <yt:videoId>Def456uvw_8</yt:videoId>
-    <title>Pleno extraordinario 3 de mayo de 2026</title>
-    <published>2026-05-04T09:30:00+00:00</published>
-  </entry>
-</feed>"""
-
-videos = parsear_feed(FEED_EJEMPLO)
-test("feed: dos entradas", len(videos), 2)
-test("feed: video_id", videos[0]["video_id"], "AbC123xyz_9")
-test("feed: titulo", videos[0]["titulo"], "Pleno ordinario 26/06/2026")
-test("feed: publicado recortado a fecha", videos[0]["publicado"], "2026-06-27")
 
 test("fecha: dd/mm/yyyy", extraer_fecha("Pleno ordinario 26/06/2026", "2026-01-01"), "2026-06-26")
 test("fecha: dd-mm-yyyy", extraer_fecha("Pleno 5-3-2026", "2026-01-01"), "2026-03-05")
@@ -228,19 +206,22 @@ test("video_id: youtu.be", extraer_video_id("https://youtu.be/AbC123xyz_9"), "Ab
 test("video_id: live", extraer_video_id("https://www.youtube.com/live/AbC123xyz_9"), "AbC123xyz_9")
 test("video_id: basura", extraer_video_id("https://example.com/x"), None)
 
-state = {"procesados": [], "pendientes": {}, "fallidos": []}
-test("state: vídeo nuevo", es_nuevo(state, "v1"), True)
-state["procesados"].append("v1")
-test("state: procesado no es nuevo", es_nuevo(state, "v1"), False)
-state = {"procesados": [], "pendientes": {}, "fallidos": []}
-state = registrar_fallo(state, "v2")
-test("state: primer fallo cuenta 1", state["pendientes"]["v2"], 1)
-test("state: pendiente sigue siendo nuevo (se reintenta)", es_nuevo(state, "v2"), True)
-state = registrar_fallo(registrar_fallo(state, "v2"), "v2")
-test("state: al tercer fallo pasa a fallidos", "v2" in state["fallidos"], True)
-test("state: fallido sale de pendientes", "v2" in state["pendientes"], False)
-test("state: fallido ya no es nuevo", es_nuevo(state, "v2"), False)
-test("state: MAX_INTENTOS es 3", MAX_INTENTOS, 3)
+class _RespuestaFalsa:
+    def __init__(self, cabeceras):
+        self.headers = cabeceras
+
+# Sin retry-after: backoff exponencial 2/4/8 min
+test("espera: backoff 1er intento", _espera_tras_error(_RespuestaFalsa({}), 0), 120)
+test("espera: backoff 3er intento", _espera_tras_error(_RespuestaFalsa({}), 2), 480)
+test("espera: sin respuesta usa backoff", _espera_tras_error(None, 1), 240)
+
+# Con retry-after: manda el servidor (+5s de margen), topado a ESPERA_MAXIMA
+test("espera: respeta retry-after", _espera_tras_error(_RespuestaFalsa({"retry-after": "7.66"}), 0), 12.66)
+test("espera: cupo horario supera el backoff",
+     _espera_tras_error(_RespuestaFalsa({"retry-after": "3000"}), 0), 3005)
+test("espera: tope de espera", _espera_tras_error(_RespuestaFalsa({"retry-after": "99999"}), 0), ESPERA_MAXIMA)
+test("espera: retry-after no numérico cae al backoff",
+     _espera_tras_error(_RespuestaFalsa({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}), 1), 240)
 
 
 # ── índice web ────────────────────────────────────────────────────────────────
