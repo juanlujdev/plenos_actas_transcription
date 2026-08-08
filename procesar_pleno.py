@@ -101,12 +101,14 @@ def descargar_audio(url: str, destino_dir: str) -> str:
 
 
 def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str]:
-    """Trocea el audio en fragmentos de `segundos`, recodificando a mono 32 kbps
-    (30 min ≈ 7 MB, muy por debajo del tope de 25 MB por fichero del plan
+    """Trocea el audio en fragmentos de `segundos`, recodificando a mono 64 kbps
+    (30 min ≈ 14 MB, holgado frente al tope de 25 MB por fichero del plan
     gratuito de Groq). Recodificar cuesta un par de minutos de CPU, pero es lo
-    único que garantiza el tamaño sea cual sea el original de YouTube."""
+    único que garantiza el tamaño sea cual sea el original de YouTube.
+    Mono porque whisper convierte a mono 16 kHz igualmente; 64k en vez de los
+    32k de la spec para dar margen de calidad en salas con eco y micro lejano."""
     patron = os.path.join(destino_dir, "chunk_%03d.m4a")
-    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-ac", "1", "-b:a", "32k",
+    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-ac", "1", "-b:a", "64k",
                "-f", "segment", "-segment_time", str(segundos), patron])
     return sorted(str(p) for p in Path(destino_dir).glob("chunk_*.m4a"))
 
