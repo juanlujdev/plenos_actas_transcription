@@ -89,24 +89,25 @@ def _ejecutar(cmd: list[str]) -> None:
 
 
 def descargar_audio(url: str, destino_dir: str) -> str:
-    """Descarga solo el audio del vídeo con yt-dlp, convertido a m4a mono 32k
-    (4h ≈ 55 MB). Si alguna vez YouTube bloqueara también esta IP, la salida es
-    bajar el audio a mano y usar --audio."""
+    """Descarga solo la pista de audio del vídeo con yt-dlp, tal cual venga de
+    YouTube. La compresión se hace al trocear: pedírsela aquí a yt-dlp no es
+    fiable, porque si el original ya es m4a copia el flujo sin recodificar e
+    ignora el bitrate (así llegaban fragmentos de 25 MB y Groq daba 413)."""
     salida = os.path.join(destino_dir, "pleno.m4a")
     _ejecutar([sys.executable, "-m", "yt_dlp",
                "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
-               "--postprocessor-args", "ffmpeg:-ac 1 -b:a 32k",
                "-o", salida, "--no-progress", url])
     return salida
 
 
 def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str]:
-    """Trocea el audio en fragmentos de `segundos` con ffmpeg (límite de fichero
-    de la API de Groq). Corte sin re-codificar: la pérdida máxima es ~1 palabra
-    por frontera de fragmento."""
+    """Trocea el audio en fragmentos de `segundos`, recodificando a mono 32 kbps
+    (30 min ≈ 7 MB, muy por debajo del tope de 25 MB por fichero del plan
+    gratuito de Groq). Recodificar cuesta un par de minutos de CPU, pero es lo
+    único que garantiza el tamaño sea cual sea el original de YouTube."""
     patron = os.path.join(destino_dir, "chunk_%03d.m4a")
-    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-f", "segment",
-               "-segment_time", str(segundos), "-c", "copy", patron])
+    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-ac", "1", "-b:a", "32k",
+               "-f", "segment", "-segment_time", str(segundos), patron])
     return sorted(str(p) for p in Path(destino_dir).glob("chunk_*.m4a"))
 
 
