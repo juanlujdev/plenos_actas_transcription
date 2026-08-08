@@ -109,6 +109,17 @@ def registrar_fallo(state: dict, video_id: str) -> dict:
 # Audio: descarga y troceado
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _ejecutar(cmd: list[str]) -> None:
+    """subprocess.run con captura; si falla, re-lanza incluyendo el final del
+    stderr — sin esto el CalledProcessError solo enseña el comando y el error
+    real (p. ej. el "confirm you're not a bot" de YouTube) queda invisible."""
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        detalle = (e.stderr or e.stdout or "").strip()[-500:]
+        raise RuntimeError(f"{os.path.basename(str(cmd[0]))} falló (exit {e.returncode}): {detalle}") from e
+
+
 def descargar_audio(url: str, destino_dir: str) -> str:
     """Descarga solo el audio del vídeo con yt-dlp, convertido a m4a mono 32k
     (4h ≈ 55 MB). Si YouTube bloquea la IP del runner ("confirm you're not a
@@ -122,7 +133,7 @@ def descargar_audio(url: str, destino_dir: str) -> str:
     cookies = os.environ.get("YT_COOKIES_FILE")
     if cookies:
         cmd += ["--cookies", cookies]
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    _ejecutar(cmd)
     return salida
 
 
@@ -131,9 +142,8 @@ def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str
     de la API de Groq). Corte sin re-codificar: la pérdida máxima es ~1 palabra
     por frontera de fragmento."""
     patron = os.path.join(destino_dir, "chunk_%03d.m4a")
-    subprocess.run(["ffmpeg", "-y", "-i", ruta, "-f", "segment",
-                    "-segment_time", str(segundos), "-c", "copy", patron],
-                   check=True, capture_output=True, text=True)
+    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-f", "segment",
+               "-segment_time", str(segundos), "-c", "copy", patron])
     return sorted(str(p) for p in Path(destino_dir).glob("chunk_*.m4a"))
 
 
