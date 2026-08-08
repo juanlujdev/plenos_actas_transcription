@@ -15,6 +15,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[2026-06-28-bot-telegram-cloudflare-webhook-design]] | `docs/superpowers/specs/2026-06-28-bot-telegram-cloudflare-webhook-design.md` | 2026-07-06 |
 | [[2026-07-01-bandos-desc-short-news-modal-design]] | `docs/superpowers/specs/2026-07-01-bandos-desc-short-news-modal-design.md` | 2026-07-06 |
 | [[2026-07-06-llm-wiki-obsidian-design]] | `docs/superpowers/specs/2026-07-06-llm-wiki-obsidian-design.md` | 2026-07-06 |
+| [[2026-07-31-plenos-youtube-pipeline-design]] | `docs/superpowers/specs/2026-07-31-plenos-youtube-pipeline-design.md` ⚠️ parcialmente superada | 2026-08-08 |
 
 ## Entidades
 
@@ -27,6 +28,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[clasificacion-ia]] | Clasificación de publicaciones con Gemini/OpenRouter (Gemma + fallback Nemotron) | 2026-07-30 |
 | [[eventos-json]] | `public/data/eventos.json`, fuente única de verdad del contenido dinámico | 2026-07-30 |
 | [[sistema-agenda-automatica]] | El sistema completo de publicación automática de eventos/bandos | 2026-07-30 |
+| [[pipeline-plenos]] | Informes de plenos desde la grabación (Groq + Gemini), ejecución manual en local | 2026-08-08 |
 
 ## Conceptos
 
@@ -42,6 +44,9 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[patron-llm-wiki-karpathy]] | El patrón "LLM Wiki" de Karpathy aplicado a este proyecto | 2026-07-06 |
 | [[por-que-cloudflare-worker]] | Por qué Cloudflare y no GitHub Actions directamente para el webhook | 2026-07-30 |
 | [[latencia-workflow-run]] | Por qué el deploy puede tardar hasta ~30 min en dispararse tras un commit del bot, y la solución propuesta (dispatch directo) | 2026-08-07 |
+| [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline de plenos | 2026-08-08 |
+| [[via-de-escape-en-el-esquema]] | Diseño anti-alucinación: el esquema nunca debe forzar al modelo a inventar | 2026-08-08 |
+| [[bucle-generador-auditor-corrector]] | Los tres roles LLM y el `while` determinista que verifica el informe | 2026-08-08 |
 
 ## Síntesis
 
