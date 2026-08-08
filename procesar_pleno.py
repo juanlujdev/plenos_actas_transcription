@@ -89,15 +89,18 @@ def _ejecutar(cmd: list[str]) -> None:
 
 
 def descargar_audio(url: str, destino_dir: str) -> str:
-    """Descarga solo la pista de audio del vídeo con yt-dlp, tal cual venga de
-    YouTube. La compresión se hace al trocear: pedírsela aquí a yt-dlp no es
-    fiable, porque si el original ya es m4a copia el flujo sin recodificar e
-    ignora el bitrate (así llegaban fragmentos de 25 MB y Groq daba 413)."""
-    salida = os.path.join(destino_dir, "pleno.m4a")
-    _ejecutar([sys.executable, "-m", "yt_dlp",
-               "-f", "bestaudio/best", "-x", "--audio-format", "m4a",
-               "-o", salida, "--no-progress", url])
-    return salida
+    """Descarga la pista de audio tal cual la sirve YouTube (suele ser webm/opus)
+    y devuelve su ruta, sin convertir nada: de eso ya se encarga trocear_audio en
+    una sola pasada. Pedirle a yt-dlp que convierta a m4a aquí sería una
+    recodificación de más — más lenta y con una generación extra de pérdida
+    (opus→aac→aac en vez de opus→aac)."""
+    _ejecutar([sys.executable, "-m", "yt_dlp", "-f", "bestaudio/best",
+               "-o", os.path.join(destino_dir, "pleno.%(ext)s"),
+               "--no-progress", url])
+    descargados = sorted(Path(destino_dir).glob("pleno.*"))
+    if not descargados:
+        raise RuntimeError("yt-dlp terminó sin dejar ningún fichero de audio")
+    return str(descargados[0])
 
 
 def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str]:
@@ -108,7 +111,7 @@ def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str
     Mono porque whisper convierte a mono 16 kHz igualmente; 64k en vez de los
     32k de la spec para dar margen de calidad en salas con eco y micro lejano."""
     patron = os.path.join(destino_dir, "chunk_%03d.m4a")
-    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-ac", "1", "-b:a", "64k",
+    _ejecutar(["ffmpeg", "-y", "-i", ruta, "-vn", "-ac", "1", "-b:a", "64k",
                "-f", "segment", "-segment_time", str(segundos), patron])
     return sorted(str(p) for p in Path(destino_dir).glob("chunk_*.m4a"))
 
