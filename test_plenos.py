@@ -150,6 +150,18 @@ test("md: sección intervenciones", "## Principales intervenciones" in md, True)
 test("md: sección ruegos", "## Ruegos y preguntas" in md, True)
 test("md: enlace al vídeo", "https://www.youtube.com/watch?v=abc123" in md, True)
 test("md: votación unanimidad", "por unanimidad" in md, True)
+
+# Un recuento incompleto no debe rellenarse con ceros: "rechazado, 0 en contra"
+# sería un dato inventado (pasó de verdad en el pleno del 7/7/2026).
+from plenos_render import _texto_votacion
+_v_parcial = Votacion(resultado="rechazado", modalidad="recuento", a_favor=1,
+                      en_contra=None, abstenciones=None, timestamp="01:46:08")
+test("votación: recuento parcial no inventa ceros",
+     _texto_votacion(_v_parcial), "Rechazado (1 a favor) [01:46:08].")
+_v_completa = Votacion(resultado="aprobado", modalidad="recuento", a_favor=3,
+                       en_contra=3, abstenciones=0, timestamp="00:17:28")
+test("votación: recuento completo se imprime entero",
+     _texto_votacion(_v_completa), "Aprobado (3 a favor, 3 en contra, 0 abstenciones) [00:17:28].")
 test("md: timestamp de votación", "00:03:12" in md, True)
 test("md: sin bloque no verificado", "no verificado" in md.lower(), False)
 
