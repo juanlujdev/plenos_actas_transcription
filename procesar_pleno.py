@@ -205,22 +205,25 @@ def _guardar_json(path: Path, data: dict) -> None:
 
 
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
-                   fecha: str, video_url: str | None) -> None:
+                   fecha: str, video_url: str | None,
+                   transcripcion: str | None = None) -> None:
     """Pipeline completo de un pleno: audio → transcripción → informe → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
+    transcripcion: si se pasa, se salta el audio y Groq (ver --rehacer-informe).
     """
     from plenos_informe import MAX_VUELTAS, bucle_informe
     from plenos_render import render_pdf
 
-    with tempfile.TemporaryDirectory() as tmp:
-        if fuente_audio is None:
-            print(f"descargando audio de {video_url}...")
-            fuente_audio = descargar_audio(video_url, tmp)
-        print("troceando audio...")
-        chunks = trocear_audio(fuente_audio, tmp)
-        print(f"transcribiendo {len(chunks)} fragmentos con Groq...")
-        transcripcion = transcribir_chunks(chunks)
+    if transcripcion is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            if fuente_audio is None:
+                print(f"descargando audio de {video_url}...")
+                fuente_audio = descargar_audio(video_url, tmp)
+            print("troceando audio...")
+            chunks = trocear_audio(fuente_audio, tmp)
+            print(f"transcribiendo {len(chunks)} fragmentos con Groq...")
+            transcripcion = transcribir_chunks(chunks)
 
     print("generando informe (bucle generador→auditor→corrector)...")
     informe, pendientes = bucle_informe(transcripcion)
@@ -260,13 +263,39 @@ def _titulo_de_youtube(url: str) -> str:
     return r.json()["title"]
 
 
+def _rehacer_informe(fecha: str) -> int:
+    """Regenera el informe de un pleno ya transcrito, reutilizando su transcripción.
+    Solo pasa por Gemini: no descarga, no trocea y no gasta cuota de Groq. Sirve
+    para reprocesar tras ajustar los prompts."""
+    entrada = next((p for p in _cargar_json(INDICE_PATH, {"plenos": []})["plenos"]
+                    if p["fecha"] == fecha), None)
+    if entrada is None:
+        print(f"No hay ningún pleno con fecha {fecha} en {INDICE_PATH}")
+        return 1
+    ruta = SALIDA_DIR / f"{fecha}-transcripcion.md"
+    if not ruta.exists():
+        print(f"Falta la transcripción {ruta}")
+        return 1
+    texto = ruta.read_text(encoding="utf-8")
+    if texto.startswith("# Transcripción"):
+        texto = texto.split("\n\n", 1)[-1]  # quitar el encabezado del fichero
+    procesar_pleno(None, entrada["video_id"], entrada["titulo"], fecha,
+                   entrada["video_url"], transcripcion=texto)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pipeline de informes de plenos")
     parser.add_argument("--url", help="URL de un vídeo de YouTube")
     parser.add_argument("--audio", help="Ruta a un fichero de audio local")
     parser.add_argument("--fecha", help="YYYY-MM-DD (con --audio; opcional con --url)")
     parser.add_argument("--titulo", help="Título del pleno (con --audio; opcional con --url)")
+    parser.add_argument("--rehacer-informe", metavar="YYYY-MM-DD",
+                        help="Rehace el informe de un pleno ya transcrito (sin Groq)")
     args = parser.parse_args()
+
+    if args.rehacer_informe:
+        return _rehacer_informe(args.rehacer_informe)
 
     if args.url:
         video_id = extraer_video_id(args.url)

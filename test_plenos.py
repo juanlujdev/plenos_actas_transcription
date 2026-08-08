@@ -157,12 +157,12 @@ from plenos_render import _texto_votacion
 _v_parcial = Votacion(resultado="rechazado", modalidad="recuento", a_favor=1,
                       en_contra=None, abstenciones=None, timestamp="01:46:08")
 test("votación: recuento parcial no inventa ceros",
-     _texto_votacion(_v_parcial), "Rechazado (1 a favor) [01:46:08].")
+     _texto_votacion(_v_parcial), "Rechazado (1 a favor).")
 _v_completa = Votacion(resultado="aprobado", modalidad="recuento", a_favor=3,
                        en_contra=3, abstenciones=0, timestamp="00:17:28")
 test("votación: recuento completo se imprime entero",
-     _texto_votacion(_v_completa), "Aprobado (3 a favor, 3 en contra, 0 abstenciones) [00:17:28].")
-test("md: timestamp de votación", "00:03:12" in md, True)
+     _texto_votacion(_v_completa), "Aprobado (3 a favor, 3 en contra, 0 abstenciones).")
+test("md: sin marcas de tiempo en el documento", "00:03:12" in md, False)
 test("md: sin bloque no verificado", "no verificado" in md.lower(), False)
 
 md_sin_video = render_markdown(_informe_v1, "Pleno", None, [])

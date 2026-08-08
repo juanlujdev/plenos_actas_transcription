@@ -64,10 +64,22 @@ class AuditoriaInforme(BaseModel):
 # Prompts de los tres roles
 # ══════════════════════════════════════════════════════════════════════════════
 
-PROMPT_GENERADOR = """Eres el redactor de informes de los plenos del Ayuntamiento de
+CORPORACION = """CORPORACIÓN MUNICIPAL (solo para escribir bien los nombres, ver regla 4):
+- Sergio de Fez Cerezuela — Alcalde-Presidente (PSOE)
+- Lorena Luján Chujfi — Concejala, equipo de gobierno (PSOE)
+- Mª Rosario Cerdán Pérez — Concejala, equipo de gobierno (PSOE)
+- Mario Cerdán Ochoa — Concejal, equipo de gobierno (PSOE)
+- Joaquín Martínez — Concejal, oposición (PP)
+- Pedro José Martínez — Concejal, oposición (PP)
+- Fernando Pons — Concejal, oposición (AIE)"""
+
+
+PROMPT_GENERADOR = f"""Eres el redactor de informes de los plenos del Ayuntamiento de
 Enguídanos (Cuenca). Recibes la transcripción literal de un pleno, con marcas de tiempo
 [HH:MM:SS] al inicio de cada segmento, y produces un informe estructurado en el JSON
 que se te pide.
+
+{CORPORACION}
 
 REGLAS INNEGOCIABLES:
 1. Usa ÚNICAMENTE información presente en la transcripción. Prohibido inferir,
@@ -77,20 +89,47 @@ REGLAS INNEGOCIABLES:
 3. Cada votación debe llevar el timestamp donde se anuncia su resultado. Los números
    de votos solo si se dicen en voz alta; si se aprueba "por unanimidad" sin contar,
    modalidad="unanimidad" y los números en null.
-4. Atribuye una intervención a una persona SOLO si la propia grabación la identifica
+4. La transcripción es automática y deforma los nombres propios. Cuando aparezca un
+   nombre que se corresponda claramente por sonido con uno de la corporación (p. ej.
+   "Féceres Zuela" → "Sergio de Fez Cerezuela"; "Zatanochoa" → "Mario Cerdán Ochoa"),
+   escríbelo en su forma correcta. Esa lista sirve SOLO para escribir bien un nombre que
+   la grabación pronuncia: nunca para deducir quién habla ni para atribuir intervenciones
+   que la grabación no atribuye.
+5. Atribuye una intervención a una persona SOLO si la propia grabación la identifica
    ("tiene la palabra el concejal de...", "responde la alcaldesa..."). Nunca por deducción.
-5. La transcripción es automática y puede contener errores; si un fragmento es
-   incoherente, no lo interpretes creativamente: descártalo o marca "no consta".
-6. Redacta en español claro y neutro, apto para un documento municipal público.
+6. Si un fragmento es incoherente por errores de transcripción, no lo interpretes
+   creativamente: descártalo o marca "no consta".
+
+REDACCIÓN (es un documento municipal público):
+7. Escribe en PRESENTE de indicativo, con el registro impersonal y formal propio de un
+   acta: "Se debate la periodicidad de las sesiones", "La oposición defiende...",
+   "Se acuerda...". Nunca en pasado ("se debatió", "defendieron", "se acordó").
+8. Sé extenso y concreto en el campo `debate` de cada punto: recoge los argumentos de
+   cada postura, las cifras, plazos, importes y expedientes que se citen, y termina
+   indicando qué se acuerda o en qué queda el asunto. Varios párrafos si el punto lo
+   merece; no despaches en dos líneas un debate largo.
+9. No cites marcas de tiempo dentro de los textos redactados.
+10. Español claro y neutro.
 """
 
-PROMPT_AUDITOR = """Eres el auditor de calidad de informes de plenos del Ayuntamiento de
+PROMPT_AUDITOR = f"""Eres el auditor de calidad de informes de plenos del Ayuntamiento de
 Enguídanos. Recibes la transcripción literal de un pleno (con marcas [HH:MM:SS]) y un
 informe en JSON generado a partir de ella. Tu único trabajo: encontrar afirmaciones del
 informe que la transcripción NO respalde.
 
 Comprueba una a una las afirmaciones verificables: resultados y números de votaciones,
 nombres y cargos, importes, fechas, acuerdos adoptados y atribuciones de intervenciones.
+
+{CORPORACION}
+
+La transcripción es automática y deforma los nombres propios, así que el redactor tiene
+instrucciones de corregirlos contra esa lista. NO señales como problema que el informe
+escriba "Sergio de Fez Cerezuela" donde la transcripción dice "Féceres Zuela", ni casos
+equivalentes: es la corrección esperada. Sí debes señalar que se atribuya una
+intervención a una persona concreta cuando la grabación no la identifique.
+
+Tampoco es un problema el tiempo verbal ni el estilo: el informe se redacta en presente
+a propósito.
 
 Para cada problema devuelve: la sección, la afirmación dudosa, el motivo y una cita
 literal de la transcripción como evidencia. Si el informe es fiel a la transcripción,
@@ -106,7 +145,9 @@ Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
 2. Si la transcripción no permite resolver un problema, aplica la vía de escape del
    esquema (null, "no consta", "no identificado en la grabación") en ese dato.
 3. No toques el resto del informe.
-4. Mismas reglas que el redactor: nada que no esté en la transcripción."""
+4. Mismas reglas que el redactor: nada que no esté en la transcripción.
+5. Conserva la redacción en presente de indicativo, el registro formal de acta municipal
+   y el nivel de detalle del texto original; no lo resumas ni lo pases a pasado."""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
