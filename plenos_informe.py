@@ -119,21 +119,39 @@ MAX_VUELTAS = 3
 MODELO_DEFECTO = "gemini-2.5-pro"
 
 
+def _reintentar_gemini(fn, intentos: int = 4):
+    """Ejecuta fn(); ante 429 o error de servidor (5xx, incl. "high demand") reintenta
+    con el mismo backoff exponencial que _reintentar() en procesar_pleno.py (2,4,8 min)."""
+    import time
+    from google.genai import errors as genai_errors
+
+    for i in range(intentos):
+        try:
+            return fn()
+        except genai_errors.APIError as e:
+            if e.code not in (429, 500, 502, 503) or i == intentos - 1:
+                raise
+            time.sleep(120 * 2 ** i)
+
+
 def _llamar_gemini(instrucciones: str, contenido: str, schema: type[BaseModel]) -> BaseModel:
     """Una llamada a Gemini con salida estructurada validada contra `schema`."""
     from google import genai  # import perezoso: los tests no necesitan el SDK
 
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    resp = client.models.generate_content(
-        model=os.environ.get("GEMINI_MODEL", MODELO_DEFECTO),
-        contents=contenido,
-        config={
-            "system_instruction": instrucciones,
-            "response_mime_type": "application/json",
-            "response_schema": schema,
-            "temperature": 0,
-        },
-    )
+    def llamada():
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        return client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", MODELO_DEFECTO),
+            contents=contenido,
+            config={
+                "system_instruction": instrucciones,
+                "response_mime_type": "application/json",
+                "response_schema": schema,
+                "temperature": 0,
+            },
+        )
+
+    resp = _reintentar_gemini(llamada)
     if resp.parsed is not None:
         return resp.parsed
     return schema.model_validate_json(resp.text)
