@@ -71,6 +71,16 @@ La spec preveía además publicar el **informe** en Markdown además de en PDF. 
 
 Primera ejecución end-to-end real el 2026-08-08 sobre "PLENO EXTRAORDINARIO 7 DE JULIO 2026" (2h16m): transcripción correcta, auditor con visto bueno a la primera, PDF de 2 páginas. Validación humana final delegada al funcionario del Ayuntamiento.
 
+## Pendiente para pasar a producción
+
+Cinco asuntos abiertos a 2026-08-08, ninguno de código:
+
+1. **Claves de API del Ayuntamiento.** Las pruebas se han hecho con las claves personales del desarrollador en capa gratuita. En producción hay que sustituirlas por claves generadas en cuentas del Ayuntamiento, con su tarjeta vinculada, para acceder a los modelos de pago de Groq y Gemini. Mientras se siga probando con claves personales, **no proponer activar facturación**.
+2. **Migrar a `gemini-2.5-pro`.** El modelo que pedía la spec, imposible en capa gratuita (cupo 0). Se cambia solo el valor de `GEMINI_MODEL`, sin tocar código. Motivo técnico: sigue mejor las reglas estrictas de los prompts (no inferir, vías de escape, atribución solo si es explícita) y su auditor detecta mejor las afirmaciones no respaldadas — relevante en un documento público sobre votaciones. Coste estimado ~0,15-0,77 €/pleno frente a céntimos con flash.
+3. **Visto bueno del funcionario** sobre el PDF generado. De su revisión pueden salir ajustes de los prompts (tono, extensión, qué se recoge de cada punto). Iterar es barato: `--rehacer-informe` no gasta cuota de Groq.
+4. **Averiguar qué usa el PC de secretaría** (Drive, OneDrive u otro) para dejar allí una carpeta con los informes generados. Es la "fase final desacoplada" que [[2026-07-31-plenos-youtube-pipeline-design]] dejó fuera de alcance por desconocer ese equipo. Si resulta ser una nube compartida, abre además la vía para automatizar el pipeline sin depender de YouTube (ver la tabla de alternativas en [[por-que-plenos-en-local]]).
+5. **Los audios de plenos que debe entregar el funcionario.** La spec contaba con dos grabaciones de ~4h que nunca llegaron. Son el único material que ejercitaría el modo `--audio`, hoy implementado pero **probado solo con audio sintético**: sin vídeo de YouTube de por medio, hay que pasar `--fecha` y `--titulo` a mano. Conviene estar atento la primera vez que se use con material real, sobre todo si el audio viene en un formato o calidad distintos de los que sirve YouTube.
+
 ## Relacionado
 
 [[2026-07-31-plenos-youtube-pipeline-design]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[hostinger-deploy]], [[github-actions]]
