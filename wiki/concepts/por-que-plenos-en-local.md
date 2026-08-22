@@ -1,7 +1,7 @@
 ---
 type: concept
-date_updated: 2026-08-08
-source_count: 1
+date_updated: 2026-08-22
+source_count: 2
 ---
 
 # Por qué el pipeline de plenos se ejecuta a mano y no automatizado
@@ -18,7 +18,13 @@ Las tareas 4-7 del plan implementaron y commitearon: sondeo del feed RSS del can
 
 > `ERROR: [youtube] 5UETzjDRRtw: Sign in to confirm you're not a bot. Use --cookies-from-browser or --cookies for the authentication.`
 
-Desde la IP residencial del desarrollador, el mismo comando funciona sin problema. La spec ya anticipaba este riesgo y proponía como plan B el secret `YT_COOKIES` con cookies de una cuenta de Google.
+Desde la IP residencial del desarrollador, el mismo comando funciona sin problema.
+
+**Cuidado con confundirlo con otro 403.** El 2026-08-22, desde esa misma IP residencial,
+yt-dlp devolvió `HTTP Error 403: Forbidden` en todos los clientes de YouTube. No era este
+bloqueo: la versión instalada (`2026.07.04`) había quedado desfasada frente a los cambios
+de YouTube, y `pip install -U yt-dlp` lo resolvió. El bloqueo por IP de datacenter dice
+literalmente *"Sign in to confirm you're not a bot"*; un 403 seco es otra cosa. La spec ya anticipaba este riesgo y proponía como plan B el secret `YT_COOKIES` con cookies de una cuenta de Google.
 
 ## Por qué se descartó el plan B de las cookies
 
