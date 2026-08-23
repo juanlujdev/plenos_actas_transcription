@@ -62,10 +62,19 @@ votos para la opción A y 3 para la opción B". El modelo escribió:
 
 > `aprobado · recuento · 3 a favor · 3 en contra · 0 abstenciones`
 
-Cada campo por separado respeta el esquema; el conjunto afirma algo que no ocurrió, y
-además llega a "aprobado" desde un empate. El auditor lo detectó y el corrector no pudo
-resolverlo, porque no había forma correcta de expresarlo dentro del esquema: agotó las
-tres vueltas.
+Cada campo por separado respeta el esquema; el conjunto afirma algo que no ocurrió. El
+auditor lo detectó y el corrector no pudo resolverlo, porque no había forma correcta de
+expresarlo dentro del esquema: agotó las tres vueltas.
+
+> **Corregido el 2026-08-23** ([[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]]):
+> este análisis daba por hecho que el `"aprobado"` era falso porque venía de un empate. Al
+> leer la transcripción resultó que **sí hubo desempate**, por el voto de calidad de quien
+> preside, y que la periodicidad quedó fijada en 40 días (00:17:19). El `resultado` era
+> correcto. Lo falso era solo la forma: "tres en contra" cuando nadie votó en contra, y el
+> `0` de abstenciones. La lección de abajo se mantiene, pero su ejemplo es más pequeño de
+> lo que parecía — y por eso **se decidió no tocar el esquema**: el acta ya reflejaba bien
+> el acuerdo, y [[acta-oficial-11-febrero-2026]] demuestra que la secretaria narra estas
+> votaciones en prosa en vez de estructurarlas.
 
 **La lección:** `int | None` protege del dato que el modelo no oyó, no del **caso que el
 esquema no contempla**. Ante un hecho que no cabe en la forma disponible, el modelo no se
@@ -81,6 +90,30 @@ los campos, porque **un recuento incompleto no es un recuento**. La regla añadi
 asistentes y la del `0` de relleno, pero permitía todavía el recuento parcial y vive solo
 en el corrector: el `0` del punto 1 lo escribió el generador, que no la tiene. Ambas cosas
 siguen abiertas.
+
+## Dos vías de escape para lo mismo es peor que una
+
+`PuntoOrdenDia.votacion` es `Votacion | None`, y dentro del objeto `resultado` admite el
+literal `"sin votación"`. Son dos maneras muy parecidas de decir que no hubo votación —una
+para el punto que nunca se somete a votación, otra para el que se somete y no llega a
+votarse— y el 2026-08-23 el modelo las mezcló: escribió la **cadena** `"sin votación"`
+donde iba el objeto, en los tres puntos de control a la vez, y tiró la generación entera.
+
+Lo destapó un cambio de prompt que insistía mucho en `null` y en votaciones. Es decir: la
+ambigüedad llevaba meses ahí y solo hizo falta empujar un poco al modelo hacia uno de los
+dos lados.
+
+**La lección:** una vía de escape es una salida honesta; **dos vías de escape para el
+mismo hecho son una trampa**. Si el esquema ofrece dos formas parecidas de decir lo mismo,
+tarde o temprano el modelo va a fabricar una tercera que no valida. Cuando se añadan
+vías de escape nuevas, conviene comprobar que no solapen con las existentes.
+
+El arreglo fue de dos capas —decirlo explícitamente en el prompt y normalizar en el
+parseo— y deliberadamente **estrecho**: solo se convierten a `null` las cadenas que
+significan ausencia. Una cadena con contenido (`"aprobado por unanimidad"`) sigue fallando,
+porque normalizarla afirmaría que no hubo votación cuando sí la hubo. Normalizar la salida
+del modelo es legítimo cuando su intención es inequívoca; deja de serlo en cuanto haya que
+adivinar.
 
 ## Relación con las otras capas
 

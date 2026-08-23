@@ -1,7 +1,7 @@
 ---
 type: entity
-date_updated: 2026-08-22
-source_count: 6
+date_updated: 2026-08-23
+source_count: 8
 ---
 
 # Pipeline del acta de plenos
@@ -190,29 +190,56 @@ propuestas que el esquema no sabe representar, un recuento parcial presentado co
 una atribución cruzada entre los dos concejales apellidados Martínez. El detalle y lo que
 implica cada una, en [[2026-08-22-primera-ejecucion-e2e-acta-oficial]].
 
-Lo que **todavía no se ha hecho** es la lectura del `.docx` contra la grabación. Al
-hacerla, lo primero que conviene comprobar —además de si algún punto convocado aparece
-redactado con contenido que no se debatió— es si **Sergio de Fez Cerezuela asistió de
-verdad**: el informe lo pone entre los asistentes y `CORPORACION` lo da de baja médica.
+El 2026-08-23 se hizo la **lectura del `.docx` contra la transcripción y contra el acta
+oficial de febrero** ([[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]]). De las tres
+objeciones pendientes, una era un falso positivo del auditor, otra un fallo de forma con el
+fondo correcto (el empate del punto 1 sí se resolvió por voto de calidad, y el acuerdo —40
+días— constaba) y la tercera un recuento parcial que hacía que el acta se contradijera a sí
+misma. Se aplicaron tres cambios de prompt (bloque `RECUENTOS` a generador y corrector,
+aviso de los dos Martínez) y se descartaron otros tres a decisión del usuario. También se
+confirmó que **Sergio de Fez Cerezuela asistió pese a la baja médica**, con discusión
+expresa en la grabación: el informe hacía bien en listarlo entre los asistentes.
+
+Queda pendiente **regenerar el acta con las reglas nuevas y volver a leerla**, y sobre todo
+el paso que ningún cambio de prompt sustituye: el visto bueno de la secretaria.
 
 ## Fallos conocidos, sin arreglar
 
 Los detectó la revisión final de la rama del rediseño y siguen abiertos:
 
+- **La regla de recuentos vive en un bloque `RECUENTOS` que reciben generador y corrector.**
+  Estuvo solo en el corrector, y el dato inventado que la incumplía lo había escrito el
+  generador: una restricción impuesta a quien corrige la necesita también quien redacta
+  primero. Dice, entre otras cosas, que un recuento **incompleto** va entero a `null`
+  (escribir solo la parte audible afirma en el acta que ese fue el resultado), que
+  `resultado` y `modalidad` se conservan aunque los números no consten, y que una
+  abstención **verbalizada** sí se cuenta: lo prohibido es el `0` de relleno, no la
+  abstención real.
+- **`votacion` es un objeto o `null`, nunca una cadena** — y hay que decírselo al modelo.
+  Con dos vías de escape parecidas (`votacion: null` y `resultado: "sin votación"`) llegó
+  a escribir la cadena `"sin votación"` en lugar del objeto y tiró la generación entera.
+  Hay una viñeta en `RECUENTOS` que lo explicita y un `field_validator` que normaliza las
+  cadenas de ausencia; una cadena con contenido sigue fallando a propósito. Ver
+  [[via-de-escape-en-el-esquema]].
+- **Hay dos concejales apellidados Martínez** (Joaquín y Pedro José, ambos de la
+  oposición). `CORPORACION` avisa de que el apellido solo no identifica a ninguno de los
+  dos y de que sin nombre de pila o etiqueta identificada la atribución es "no
+  identificado en la grabación".
 - **`--rehacer-informe` no puede recuperar de `tipo_sesion="no consta"`.** Si el modelo no determina el tipo de sesión, el acta no se genera y el mensaje de consola invita a corregir el `informe.json` — pero **nada vuelve a leer ese fichero**, y repetir el comando llama otra vez al modelo a temperatura 0 sobre la misma transcripción, así que devuelve lo mismo. La única salida documentada para el caso límite es un bucle que no puede terminar. Arreglo previsto (~6 líneas): un `--rehacer-acta <fecha>` que valide el JSON del borrador y llame directamente a `render_acta`. Pasar `--convocatoria` lo evita en la práctica, porque el tipo de sesión sale de ahí.
-- **La regla de recuentos vive solo en el corrector, y admite recuentos parciales.**
-  `PROMPT_CORRECTOR` prohíbe desde el 2026-08-22 cambiar una cifra objetada por otra,
-  deducir votos restando de los asistentes y rellenar con `0`. Pero el `0` de relleno del
-  punto 1 lo escribió el **generador**, que no tiene esa regla; y la propia regla permite
-  todavía poner número "solo en lo que se oye", que es como se coló un recuento de 3 votos
-  sobre 6 asistentes presentado como resultado final. Arreglo previsto: llevar la regla
-  también a `PROMPT_GENERADOR` y endurecerla a "recuento incompleto → todos los campos a
-  `null`".
-- **`Votacion` no modela una votación entre alternativas.** Un empate entre dos propuestas
-  (mensual vs. cada 40 días) no cabe en `a_favor`/`en_contra`/`abstenciones`, y el modelo
-  lo dobla hasta que entra. Mientras el esquema no lo contemple, lo correcto es recuentos a
-  `null` y el detalle en `texto` — y eso hay que decírselo en el prompt, porque el modelo
-  por su cuenta prefiere rellenar. Ver [[via-de-escape-en-el-esquema]].
+- **`Votacion` no modela una votación entre alternativas, y se decidió no arreglarlo.** Un
+  empate entre dos propuestas (plenos mensuales vs. cada 40 días) no cabe en
+  `a_favor`/`en_contra`/`abstenciones`, así que el modelo lo dobla hasta que entra y la
+  segunda opción aparece como votos "en contra". Se barajó añadir estructura al esquema y
+  se descartó el 2026-08-23: [[acta-oficial-11-febrero-2026]] demuestra que la secretaria
+  narra estas votaciones en prosa y no tabula nada, y en el pleno de julio el acta ya
+  reflejaba bien el acuerdo y el desempate. Consecuencia asumida: el acta dice "tres votos
+  a favor y tres en contra" donde en rigor hubo tres y tres por opciones distintas.
+- **El acta afirma resultados que la grabación no declara.** En el punto 3 del pleno de
+  julio se oye "Pues bueno, votos a favor" y acto seguido se pasa al punto siguiente:
+  nadie cuenta votos ni dice que quede aprobado, y el acta dice "queda aprobado". Se
+  propuso exigir que `resultado` solo se rellene si se declara, y **el usuario lo
+  descartó**: dejaría a la secretaria un hueco en un caso donde probablemente sí hubo
+  acuerdo. Es el único punto del pipeline donde se admite a sabiendas una inferencia.
 - **El informe corregido vive solo en memoria durante el bucle.** Si la última auditoría
   agota los reintentos, se pierden las vueltas de corrector ya pagadas (~0,3 $ y un cuarto
   de hora). Con el reintento de los cortes del proveedor el caso quedó raro, así que se
@@ -252,4 +279,4 @@ afinarse.
 
 ## Relacionado
 
-[[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[hostinger-deploy]], [[github-actions]]
+[[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[acta-oficial-11-febrero-2026]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[hostinger-deploy]], [[github-actions]]

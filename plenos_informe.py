@@ -10,7 +10,7 @@ para que el esquema nunca fuerce al modelo a inventar.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Votacion(BaseModel):
@@ -35,6 +35,19 @@ class PuntoOrdenDia(BaseModel):
         "acuerdo desglosado si lo hay. NO escribas aquí recuentos de votos: van en el "
         "campo `votacion` y el documento los compone a partir de ahí."))
     votacion: Votacion | None = Field(None, description="null si el punto no se sometió a votación")
+
+    @field_validator("votacion", mode="before")
+    @classmethod
+    def _cadena_de_ausencia_es_null(cls, v):
+        """El modelo escribe a veces la cadena "sin votación" donde va el objeto: hay dos
+        vías de escape parecidas (`votacion: null` y `resultado: "sin votación"`) y las
+        confunde. La intención es inequívoca —no hubo votación—, así que se normaliza en
+        vez de tirar la generación entera del informe. Cualquier otra cadena se deja
+        pasar para que pydantic falle: ahí sí se estaría perdiendo información."""
+        if isinstance(v, str) and v.strip().lower() in {
+                "sin votación", "sin votacion", "no consta", "null", ""}:
+            return None
+        return v
 
 
 class BloqueRuegos(BaseModel):
@@ -93,6 +106,11 @@ CORPORACION = """CORPORACIÓN MUNICIPAL (solo para escribir bien los nombres, ve
 - Mario Cerdán Ochoa — Concejal, equipo de gobierno (PSOE)
 - Joaquín Martínez — Concejal, oposición (PP)
 - Pedro José Martínez — Concejal, oposición (PP)
+  ATENCIÓN: son DOS personas distintas que comparten apellido. "Martínez" a secas no
+  identifica a ninguno de los dos. Para atribuirle una intervención a uno de ellos hace
+  falta el nombre de pila, o que la etiqueta de locutor esté identificada según las
+  reglas de arriba. Si solo se oye el apellido, la atribución es "no identificado en la
+  grabación".
 - Fernando Pons — Concejal, oposición (AIE)
 - Elena — Secretaria del Ayuntamiento. NO es miembro de la Corporación y no vota: da fe
   de la sesión, lee acuerdos e informa cuando se le pide. Su voz sale en la grabación,
@@ -118,6 +136,29 @@ identidades: sabe que dos intervenciones son de la misma persona, no de quién s
 - Las etiquetas no se escriben en el acta: son andamiaje de la transcripción."""
 
 
+# Va a los tres roles. La regla vivía solo en el corrector, y el dato inventado que la
+# incumplía lo había escrito el generador: una restricción que se le impone al corrector
+# la necesita también quien redacta primero.
+RECUENTOS = """RECUENTOS DE VOTOS:
+- El campo `votacion` de un punto es un OBJETO o `null`, nunca una cadena de texto. Si el
+  punto no se somete a votación, `votacion` va a `null`; si se somete pero no llega a
+  votarse, `votacion` es un objeto con `resultado: "sin votación"`. Ese literal vive
+  DENTRO del objeto, jamás en lugar del objeto.
+- Un recuento solo lleva número si ese número se oye en la grabación.
+- Si el recuento se verbaliza de forma ininteligible, o si no consta el sentido del voto
+  de TODOS los presentes, los tres campos (`a_favor`, `en_contra`, `abstenciones`) van a
+  `null`. Un recuento incompleto NO es un recuento: escribir solo la parte audible
+  afirma en el acta que ese fue el resultado de la votación.
+- `resultado` y `modalidad` se conservan si sí constan. Que no se sepa el recuento no
+  significa que no se sepa si el asunto se aprobó o se rechazó: si la grabación deja
+  claro el resultado, ese resultado se escribe aunque los números vayan a `null`.
+- Deducir los votos que faltan restando del número de asistentes, del reparto de la
+  corporación o del sentido del debate es inventar: prohibido.
+- Las abstenciones funcionan igual que los demás votos: si alguien dice que se abstiene,
+  cuenta esa abstención. Si nadie la menciona, `abstenciones` va a `null`, nunca a 0. Un
+  0 afirma que nadie votó así, y eso hay que oírlo igual que cualquier otra cifra."""
+
+
 PROMPT_GENERADOR = f"""Eres el redactor de informes de los plenos del Ayuntamiento de
 Enguídanos (Cuenca). Recibes la transcripción literal de un pleno, con marcas de tiempo
 [HH:MM:SS] al inicio de cada segmento, y produces un informe estructurado en el JSON
@@ -127,14 +168,16 @@ que se te pide.
 
 {DIARIZACION}
 
+{RECUENTOS}
+
 REGLAS INNEGOCIABLES:
 1. Usa ÚNICAMENTE información presente en la transcripción. Prohibido inferir,
    completar huecos o usar conocimiento externo.
 2. Si un dato no consta o no se entiende, usa la vía de escape del esquema:
    null, "no consta", "sin votación" o "no identificado en la grabación", según el campo.
-3. Cada votación debe llevar el timestamp donde se anuncia su resultado. Los números
-   de votos solo si se dicen en voz alta; si se aprueba "por unanimidad" sin contar,
-   modalidad="unanimidad" y los números en null.
+3. Cada votación debe llevar el timestamp donde se anuncia su resultado, y sus números
+   se rigen por el bloque RECUENTOS DE VOTOS de arriba. Si se aprueba "por unanimidad"
+   sin contar, modalidad="unanimidad" y los números en null.
 4. La transcripción es automática y deforma los nombres propios. Cuando aparezca un
    nombre que se corresponda claramente por sonido con uno de la corporación (p. ej.
    "Féceres Zuela" → "Sergio de Fez Cerezuela"; "Zatanochoa" → "Mario Cerdán Ochoa"),
@@ -201,6 +244,14 @@ nombres y cargos, importes, fechas, acuerdos adoptados y atribuciones de interve
 
 {DIARIZACION}
 
+{RECUENTOS}
+
+El redactor y el corrector tienen ese mismo bloque de RECUENTOS, así que un recuento en
+`null` es la conducta esperada cuando el número no se oye, NO una inconsistencia: no lo
+señales, ni pidas rellenarlo deduciéndolo del debate o de una parte audible del recuento.
+Un `resultado` con los números en `null` es una votación correctamente redactada. Lo que
+sí debes señalar es el caso contrario: un número escrito que la grabación no dice.
+
 El redactor tiene esas mismas instrucciones. Que atribuya a una persona TODAS las
 intervenciones de una etiqueta que la grabación identifica una sola vez es la conducta
 esperada, no una invención: NO lo señales, aunque el fragmento concreto que estás
@@ -251,22 +302,16 @@ en JSON, y la lista de problemas detectados por un auditor (cada uno con su evid
 
 {DIARIZACION}
 
+{RECUENTOS}
+
 Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
 1. Corrige exclusivamente lo señalado en los problemas, apoyándote en la transcripción.
 2. Si la transcripción no permite resolver un problema, aplica la vía de escape del
    esquema (null, "no consta", "no identificado en la grabación") en ese dato.
 3. RECUENTOS DE VOTOS. Si el auditor objeta un número de votos, la corrección NO es
-   cambiar ese número por otro que encaje mejor: es poner `null` en el campo objetado.
-   Un recuento solo lleva número si ese número se oye en la grabación.
-   - Si el recuento se verbaliza de forma ininteligible, todos sus campos van a `null`.
-   - Si solo consta una parte (se oye "uno a favor" pero no el resto), pon número SOLO
-     en lo que se oye y `null` en los demás campos.
-   - Deducir los votos que faltan restando del número de asistentes, del reparto de la
-     corporación o del sentido del debate es inventar: prohibido.
-   - Nunca pongas 0 para rellenar: un 0 afirma que nadie votó así, y eso hay que oírlo
-     igual que cualquier otra cifra.
-   `resultado` y `modalidad` se conservan si sí constan: que no se sepa el recuento no
-   significa que no se sepa si el punto se aprobó o se rechazó.
+   cambiar ese número por otro que encaje mejor: es poner `null`, según el bloque
+   RECUENTOS DE VOTOS de arriba. Un recuento objetado que se sustituye por otra cifra
+   sigue siendo una cifra que nadie dijo, y el auditor volverá a rechazarla.
 4. No toques el resto del informe.
 5. Mismas reglas que el redactor: nada que no esté en la transcripción.
 6. Conserva la redacción en presente de indicativo, el registro y las fórmulas de acta
@@ -326,25 +371,69 @@ def _esquema_estricto(schema):
     return schema
 
 
+def _reensamblar_sse(lineas) -> dict:
+    """Reensambla un stream SSE de OpenRouter en la misma forma que devuelve la API sin
+    streaming, para que el resto del código no note la diferencia. Función aparte de la
+    red porque es lo único con lógica que testear."""
+    trozos, usage, fin, error = [], {}, None, None
+    for linea in lineas:
+        # Los ": OPENROUTER PROCESSING" son los keep-alive que mantienen viva la conexión
+        # mientras el modelo razona: justo lo que evita el idle timeout.
+        if not linea or linea.startswith(":"):
+            continue
+        if not linea.startswith("data:"):
+            continue
+        dato = linea[5:].strip()
+        if dato == "[DONE]":
+            break
+        trozo = json.loads(dato)
+        error = trozo.get("error") or error
+        if trozo.get("usage"):
+            usage = trozo["usage"]
+        for eleccion in trozo.get("choices") or []:
+            trozos.append((eleccion.get("delta") or {}).get("content") or "")
+            fin = eleccion.get("finish_reason") or fin
+            error = eleccion.get("error") or error
+    eleccion = {"finish_reason": fin, "message": {"content": "".join(trozos)}}
+    if error:
+        eleccion["error"] = error
+    return {"choices": [eleccion], "usage": usage}
+
+
 def _peticion(cuerpo: dict, intentos: int = 4) -> dict:
     """POST a OpenRouter; ante 429 o error de servidor reintenta con el mismo backoff
-    exponencial que _reintentar() en procesar_pleno.py (2, 4, 8 min)."""
+    exponencial que _reintentar() en procesar_pleno.py (2, 4, 8 min).
+
+    Va en streaming, y no por interactividad: sin él la petición no emite un solo byte
+    mientras gemini-2.5-pro razona — el auditor pasa minutos pensando —, el proveedor la
+    da por ociosa y la corta con un 504 "Upstream idle timeout exceeded" dentro de un
+    HTTP 200. Como la temperatura es 0, reintentarla producía exactamente el mismo
+    razonamiento y el mismo corte: cuatro intentos idénticos y el bucle muerto. Con SSE
+    llegan los deltas y los keep-alive, así que la conexión nunca está ociosa.
+    """
+    cuerpo = {**cuerpo, "stream": True, "stream_options": {"include_usage": True}}
     for i in range(intentos):
+        # timeout de tupla: 30 s para conectar y 300 s ENTRE trozos, no en total — con
+        # streaming el tope global no tiene sentido y cortaría auditorías legítimas.
         r = requests.post(
             ENDPOINT,
             headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
             json=cuerpo,
-            timeout=900,
+            stream=True,
+            timeout=(30, 300),
         )
         if (r.status_code == 429 or r.status_code >= 500) and i < intentos - 1:
+            r.close()
             espera = 120 * 2 ** i
             _log(f"     OpenRouter devolvió {r.status_code}; esperando {espera // 60} min y reintentando...")
             time.sleep(espera)
             continue
         r.raise_for_status()
-        datos = r.json()
-        if "choices" not in datos:  # OpenRouter devuelve algunos errores con HTTP 200
-            raise RuntimeError(f"OpenRouter no devolvió respuesta: {datos}")
+        # Sin esto requests decodifica el SSE como ISO-8859-1 (text/event-stream no
+        # declara charset) y se destrozan los acentos de todo el informe.
+        r.encoding = "utf-8"
+        with r:
+            datos = _reensamblar_sse(r.iter_lines(decode_unicode=True))
         # Un fallo del proveedor a mitad de generación también llega con HTTP 200, pero
         # con el error DENTRO del choice: el modelo se atasca razonando en círculos,
         # Google deja de emitir tokens y OpenRouter corta ("Upstream idle timeout
@@ -404,7 +493,9 @@ def _llamar_llm(instrucciones: str, contenido: str, schema: type[BaseModel],
 
     eleccion = datos["choices"][0]
     contenido = (eleccion.get("message") or {}).get("content")
-    if not contenido:
+    # `error` manda sobre `content`: un stream cortado a mitad deja JSON truncado, que
+    # pydantic rechazaría con un error de parseo que no dice nada de la causa real.
+    if eleccion.get("error") or not contenido:
         # El modelo puede devolver 200 con content vacío: se le acaba el presupuesto
         # de salida razonando (finish_reason "length"), o el proveedor corta. Sin este
         # aviso el None viajaba hasta pydantic y reventaba con un error de tipos que

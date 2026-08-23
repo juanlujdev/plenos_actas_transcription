@@ -21,6 +21,8 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[2026-08-22-plenos-openrouter-gemini-pro]] | conversación de trabajo del 2026-08-22 (sin spec ni plan) | 2026-08-22 |
 | [[2026-08-22-plenos-assemblyai-diarizacion]] | conversación de trabajo del 2026-08-22 (sin spec ni plan) | 2026-08-22 |
 | [[2026-08-22-primera-ejecucion-e2e-acta-oficial]] | conversación de trabajo del 2026-08-22 (sin spec ni plan) | 2026-08-22 |
+| [[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]] | conversación de trabajo del 2026-08-23 (sin spec ni plan) | 2026-08-23 |
+| [[acta-oficial-11-febrero-2026]] | `~/Downloads/Actas Enguidanos Plenos/20260512_Acta_Borrador…pdf` (documento del Ayuntamiento) | 2026-08-23 |
 
 ## Entidades
 
@@ -33,7 +35,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[clasificacion-ia]] | Clasificación de publicaciones con Gemini/OpenRouter (Gemma + fallback Nemotron) | 2026-07-30 |
 | [[eventos-json]] | `public/data/eventos.json`, fuente única de verdad del contenido dinámico | 2026-07-30 |
 | [[sistema-agenda-automatica]] | El sistema completo de publicación automática de eventos/bandos | 2026-07-30 |
-| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; validado end-to-end el 2026-08-22 | 2026-08-22 |
+| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; validado end-to-end el 2026-08-22 | 2026-08-23 |
 
 ## Conceptos
 
@@ -50,8 +52,8 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[por-que-cloudflare-worker]] | Por qué Cloudflare y no GitHub Actions directamente para el webhook | 2026-07-30 |
 | [[latencia-workflow-run]] | Por qué el deploy puede tardar hasta ~30 min en dispararse tras un commit del bot, y la solución propuesta (dispatch directo) | 2026-08-07 |
 | [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline de plenos | 2026-08-22 |
-| [[via-de-escape-en-el-esquema]] | Diseño anti-alucinación: el esquema nunca debe forzar al modelo a inventar | 2026-08-22 |
-| [[bucle-generador-auditor-corrector]] | Los tres roles LLM y el `while` determinista que verifica el acta | 2026-08-22 |
+| [[via-de-escape-en-el-esquema]] | Diseño anti-alucinación: el esquema nunca debe forzar al modelo a inventar — ni ofrecerle dos vías de escape para lo mismo | 2026-08-23 |
+| [[bucle-generador-auditor-corrector]] | Los tres roles LLM y el `while` determinista que verifica el acta | 2026-08-23 |
 | [[convocatoria-como-fuente]] | El orden del día oficial como segunda fuente: manda en la forma, la grabación manda en el fondo | 2026-08-22 |
 | [[diarizacion-como-andamiaje]] | La etiqueta de locutor es una voz, no una identidad: cuándo puede propagarse a toda la sesión y qué riesgo trae | 2026-08-22 |
 | [[persistir-lo-caro-antes-de-lo-fragil]] | Lo que cuesta dinero se escribe en disco antes de llamar a lo que puede fallar | 2026-08-22 |

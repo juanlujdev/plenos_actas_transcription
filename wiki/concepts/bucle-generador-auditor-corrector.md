@@ -70,9 +70,12 @@ En la primera ejecución completa el bucle terminó con **3 objeciones sin resol
 
 1. **Un caso que el esquema no sabe representar** — el corrector no puede resolver la objeción porque no hay forma correcta de escribirlo (el empate entre dos propuestas, ver [[via-de-escape-en-el-esquema]]).
 2. **Una regla que solo tiene uno de los roles.** La regla sobre recuentos no verificables se añadió a `PROMPT_CORRECTOR`, pero el dato inventado que la incumplía lo había escrito el **generador**. Corolario de la regla de simetría de más arriba, en su otra dirección: *una restricción que le impones al corrector la necesita también el generador, o el bucle gastará vueltas arreglando lo que se produce de nuevo cada vez*.
-3. **Un error de contenido real** que hay que llevar a la revisión humana (la atribución cruzada entre los dos concejales apellidados Martínez).
+3. **Un error de contenido real** que hay que llevar a la revisión humana.
+4. **Un falso positivo del auditor.** Añadido el 2026-08-23: la tercera objeción de aquella ejecución decía que el informe atribuía una intervención a Joaquín Martínez; el JSON final decía Pedro José Martínez, que era lo correcto, y la objeción señalaba además un punto donde esa frase ni aparecía. El auditor **también se equivoca, y en la misma dirección que el generador**: nombres parecidos, índices cambiados.
 
-Distinguir cuál de los tres es cada pendiente es exactamente lo que se hace al leer la lista final antes de enviar el acta a la secretaria.
+Distinguir cuál de los cuatro es cada pendiente es exactamente lo que se hace al leer la lista final antes de enviar el acta a la secretaria — y por eso los pendientes se listan por consola en vez de escribirse dentro del acta: son material para una persona, no conclusiones.
+
+Un pendiente del tipo 4 tiene además una consecuencia cara: el corrector gasta una vuelta entera intentando "arreglar" algo que ya estaba bien, y puede empeorarlo. Es el argumento más fuerte contra subir `MAX_VUELTAS`.
 
 ## El bucle narra su progreso (2026-08-21)
 

@@ -666,19 +666,25 @@ print("── el proveedor corta la respuesta ───────────�
 # El fallo real del 2026-08-22: el auditor se atascó razonando, Google dejó de emitir
 # y OpenRouter devolvió 200 con {"error": {"code": 504, ...}} dentro del choice. Sin
 # reintento, eso tiraba tres vueltas de corrector ya pagadas.
-_corte = {"choices": [{"finish_reason": "error", "message": {"content": None},
-                       "error": {"code": 504, "message": "Upstream idle timeout exceeded"}}]}
-_buena = {"choices": [{"finish_reason": "stop",
-                       "message": {"content": '{"problemas": []}'}}]}
+# Ahora la petición va en streaming, así que el falso devuelve líneas SSE, que es lo que
+# _peticion consume de verdad.
+_corte = ['data: {"choices":[{"finish_reason":"error","delta":{},'
+          '"error":{"code":504,"message":"Upstream idle timeout exceeded"}}]}']
+_buena = ['data: {"choices":[{"finish_reason":"stop",'
+          '"delta":{"content":"{\\"problemas\\": []}"}}]}', 'data: [DONE]']
 
 class _RespuestaFalsa:
-    def __init__(self, datos): self._datos = datos
+    def __init__(self, lineas): self._lineas = lineas
     status_code = 200
+    encoding = None
     def raise_for_status(self): pass
-    def json(self): return self._datos
+    def close(self): pass
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def iter_lines(self, decode_unicode=False): return iter(self._lineas)
 
 _llamadas = {"n": 0}
-def _post_falso(url, headers=None, json=None, timeout=None):
+def _post_falso(url, headers=None, json=None, timeout=None, stream=None):
     _llamadas["n"] += 1
     return _RespuestaFalsa(_corte if _llamadas["n"] == 1 else _buena)
 
@@ -700,7 +706,7 @@ finally:
 
 # Agotados los intentos, el corte se convierte en el error legible de siempre.
 _llamadas_todas = {"n": 0}
-def _post_siempre_roto(url, headers=None, json=None, timeout=None):
+def _post_siempre_roto(url, headers=None, json=None, timeout=None, stream=None):
     _llamadas_todas["n"] += 1
     return _RespuestaFalsa(_corte)
 
@@ -733,11 +739,91 @@ test("corrector: prohíbe cambiar la cifra por otra que encaje",
      "NO es\n   cambiar ese número por otro" in _pc, True)
 test("corrector: prohíbe deducir restando de los asistentes",
      "restando del número de asistentes" in _pc, True)
-test("corrector: prohíbe el 0 de relleno", "Nunca pongas 0 para rellenar" in _pc, True)
+test("corrector: prohíbe el 0 de relleno",
+     "va a `null`, nunca a 0" in _pc, True)
+
+# La regla vive en un bloque compartido: el generador la necesita porque el `0` inventado
+# que la incumplía lo escribió él, no el corrector.
+_pg = _pi_rescate.PROMPT_GENERADOR
+test("generador: recibe también la regla de recuentos",
+     "RECUENTOS DE VOTOS" in _pg, True)
+test("generador: recuento incompleto va entero a null",
+     "Un recuento incompleto NO es un recuento" in _pg, True)
+test("generador: una abstención verbalizada sí se cuenta",
+     "si alguien dice que se abstiene,\n  cuenta esa abstención" in _pg, True)
+test("generador: el resultado se conserva aunque los números vayan a null",
+     "ese resultado se escribe aunque los números vayan a `null`" in _pg, True)
+
+# Dos concejales comparten apellido: el apellido solo no identifica a ninguno.
+test("corporación: avisa de que hay dos Martínez",
+     "son DOS personas distintas que comparten apellido" in _pg, True)
+test("corporación: el aviso llega también al auditor",
+     "son DOS personas distintas que comparten apellido" in _pi_rescate.PROMPT_AUDITOR, True)
 test("corrector: resultado y modalidad se conservan",
      "`resultado` y `modalidad` se conservan" in _pc, True)
 test("corrector: sus reglas siguen numeradas sin saltos",
      [n for n in range(1, 8) if f"\n{n}. " in _pc], list(range(1, 8)))
+
+
+# ── "sin votación" como cadena en lugar del objeto ───────────────────────────
+print("── \"sin votación\" como cadena ─────────────────────────────────────")
+
+# Fallo real del 2026-08-23: el generador puso la cadena "sin votación" en `votacion`,
+# que es objeto o null. Hay dos vías de escape parecidas y las confundió; la intención
+# es inequívoca, así que se normaliza en vez de tirar la generación entera.
+from plenos_informe import PuntoOrdenDia as _POD
+_base = {"numero": 2, "parte": "control", "titulo": "X", "texto": "y"}
+for _cadena in ("sin votación", "sin votacion", "no consta", "", "  SIN VOTACIÓN  "):
+    test(f"cadena {_cadena!r} en `votacion` se normaliza a null",
+         _POD.model_validate(dict(_base, votacion=_cadena)).votacion, None)
+test("null explícito sigue siendo null",
+     _POD.model_validate(dict(_base, votacion=None)).votacion, None)
+_obj = _POD.model_validate(dict(_base, votacion={"resultado": "aprobado",
+                                                 "modalidad": "unanimidad"}))
+test("el objeto de votación sigue validándose", _obj.votacion.resultado, "aprobado")
+
+# Una cadena que NO significa ausencia debe seguir fallando: normalizarla a null diría
+# que no hubo votación cuando sí la hubo.
+_fallo = False
+try:
+    _POD.model_validate(dict(_base, votacion="aprobado por unanimidad"))
+except Exception:
+    _fallo = True
+test("una cadena con contenido sigue siendo un error", _fallo, True)
+
+test("el prompt explica que `votacion` es objeto o null, nunca cadena",
+     "nunca una cadena de texto" in _pi_rescate.PROMPT_GENERADOR, True)
+
+
+# ── reensamblado del stream SSE ───────────────────────────────────────────────
+# El streaming existe para que el proveedor no corte la petición por ociosa mientras
+# gemini-2.5-pro razona (504 "Upstream idle timeout exceeded"). Lo que hay que fijar es
+# que reensamblar los trozos devuelva exactamente la forma que espera _llamar_llm.
+_sse = _pi_rescate._reensamblar_sse
+_ok = _sse([
+    ': OPENROUTER PROCESSING',
+    'data: {"choices":[{"delta":{"content":"{\\"a\\":"}}]}',
+    '',
+    ': OPENROUTER PROCESSING',
+    'data: {"choices":[{"delta":{"content":"1}"},"finish_reason":"stop"}]}',
+    'data: {"choices":[],"usage":{"prompt_tokens":7}}',
+    'data: [DONE]',
+])
+test("los deltas se concatenan en el content", _ok["choices"][0]["message"]["content"], '{"a":1}')
+test("el finish_reason se conserva", _ok["choices"][0]["finish_reason"], "stop")
+test("el usage del último trozo se conserva", _ok["usage"]["prompt_tokens"], 7)
+test("un stream limpio no lleva error", "error" in _ok["choices"][0], False)
+
+# El corte del proveedor llega como un trozo más, con el error dentro del choice: si no
+# se propaga, _peticion no lo reintentaría y el JSON truncado llegaría a pydantic.
+_roto = _sse([
+    'data: {"choices":[{"delta":{"content":"{\\"a\\":"}}]}',
+    'data: {"choices":[{"error":{"code":504,"message":"Upstream idle timeout exceeded"}}]}',
+])
+test("el error del proveedor se propaga", _roto["choices"][0]["error"]["code"], 504)
+
+test("el auditor también recibe el bloque de RECUENTOS",
+     "RECUENTOS DE VOTOS" in _pi_rescate.PROMPT_AUDITOR, True)
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────
