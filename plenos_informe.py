@@ -20,6 +20,9 @@ class Votacion(BaseModel):
     a_favor: int | None = Field(None, description="Solo si se dice el número en la grabación; si no, null")
     en_contra: int | None = Field(None, description="Solo si se dice el número en la grabación; si no, null")
     abstenciones: int | None = Field(None, description="Solo si se dice el número en la grabación; si no, null")
+    voto_de_calidad: bool = Field(False, description=(
+        "true SOLO si la grabación dice que el empate lo resuelve el voto de calidad de "
+        "quien preside. Si hay empate y nadie menciona el voto de calidad, false."))
     timestamp: str | None = Field(None, description="HH:MM:SS de la transcripción donde se anuncia el resultado")
 
 
@@ -31,9 +34,18 @@ class PuntoOrdenDia(BaseModel):
         "da por informada."))
     titulo: str = Field(description="Título del punto EN MAYÚSCULAS, como en un acta municipal")
     texto: str = Field(description=(
-        "Redacción del punto en prosa de acta, con las intervenciones incorporadas y el "
-        "acuerdo desglosado si lo hay. NO escribas aquí recuentos de votos: van en el "
-        "campo `votacion` y el documento los compone a partir de ahí."))
+        "Deliberación del punto en prosa de acta, con las intervenciones incorporadas en el "
+        "orden en que se producen. Separa los párrafos con una línea en blanco: uno por "
+        "bloque de debate, de tres a seis frases cada uno. NO escribas aquí el acuerdo (va "
+        "en `acuerdo`) ni los recuentos de votos (van en `votacion`): el documento los "
+        "compone a partir de esos campos."))
+    acuerdo: str | None = Field(None, description=(
+        "Lo que el Pleno acuerda, redactado para continuar la fórmula 'El Pleno del "
+        "Ayuntamiento ACUERDA, ' — así, en minúscula y sin repetir esa fórmula: "
+        "'aprobar la apertura del patio de la Biblioteca durante el día', 'dejar el punto "
+        "sobre la mesa, con el compromiso de...'. Un solo párrafo; solo desglosa en "
+        "'PRIMERO. ... SEGUNDO. ...' si el Pleno adopta varios acuerdos distintos en el "
+        "mismo punto. null en los puntos de control y en los que no se acuerda nada."))
     votacion: Votacion | None = Field(None, description="null si el punto no se sometió a votación")
 
     @field_validator("votacion", mode="before")
@@ -66,6 +78,11 @@ class InformePleno(BaseModel):
     motivo_convocatoria: str | None = Field(None, description=(
         "Solo en sesiones extraordinarias y solo si se lee el motivo de la convocatoria; "
         "si no, null"))
+    solicitantes: list[str] = Field(description=(
+        "Solo en extraordinarias convocadas a petición de concejales: quién la solicita, "
+        "con tratamiento, nombre y apellidos completos y grupo si consta ('D. Pedro José "
+        "Martínez Martínez del Partido Popular'). Sale de la convocatoria o de la propia "
+        "grabación. Lista vacía si la sesión no se convoca a solicitud de concejales."))
     fecha_pleno: str | None = Field(None, description="YYYY-MM-DD solo si se menciona en la grabación; si no, null")
     hora_inicio: str | None = Field(None, description="HH:MM solo si se dice en la grabación; si no, null")
     hora_fin: str | None = Field(None, description="HH:MM solo si se dice en la grabación; si no, null")
@@ -73,9 +90,20 @@ class InformePleno(BaseModel):
         "Quien preside la sesión, solo si la grabación lo identifica; si no, null"))
     asistentes: list[str] = Field(description=(
         "Miembros de la corporación cuya asistencia consta en la grabación (pase de lista "
-        "o identificación explícita). Lista vacía si no consta; nunca deduzcas asistencia."))
+        "o identificación explícita), con tratamiento y nombre completo tal como se escriben "
+        "en el acta: 'D. Sergio de Fez Cerezuela', 'Dª. Mª Rosario Cerdán Pérez'. Lista "
+        "vacía si no consta; nunca deduzcas asistencia."))
     ausentes: list[str] = Field(description=(
-        "Miembros cuya ausencia se hace constar expresamente. Lista vacía si no consta."))
+        "Miembros cuya ausencia se hace constar expresamente, con tratamiento y nombre "
+        "completo. Lista vacía si no consta."))
+    declaraciones_apertura: list[str] = Field(description=(
+        "Las declaraciones formales que quien preside lee o pronuncia al abrir la sesión, "
+        "antes de entrar en el primer punto: el aviso de que la sesión se graba y difunde, "
+        "la constancia de que se preside por delegación, la exclusión o alteración de algún "
+        "punto del orden del día, la justificación de una ausencia. Un elemento por "
+        "declaración, en el orden en que se pronuncian, recogidas casi literalmente y "
+        "corregido solo lo que sean errores evidentes de transcripción. Lista vacía si la "
+        "sesión se abre sin ninguna declaración de este tipo."))
     orden_del_dia: list[PuntoOrdenDia]
     ruegos_y_preguntas: list[BloqueRuegos] = Field(description="Lista vacía si no hubo turno")
     resumen_corto: str = Field(description="2-3 frases para la tarjeta de la web")
@@ -97,28 +125,53 @@ class AuditoriaInforme(BaseModel):
 # Prompts de los tres roles
 # ══════════════════════════════════════════════════════════════════════════════
 
-CORPORACION = """CORPORACIÓN MUNICIPAL (solo para escribir bien los nombres, ver regla 4):
-- Sergio de Fez Cerezuela — Alcalde-Presidente (PSOE), de baja médica
-- Lorena Luján Chujfi — Concejala, equipo de gobierno (PSOE); ejerce la Alcaldía en
-  funciones durante esa baja y es quien preside las sesiones
+# Quién ocupa la Alcaldía y quién preside de hecho. Es lo primero que hay que revisar
+# tras una elección municipal, un cambio de Alcaldía o una delegación de funciones: de
+# aquí salen el tratamiento de todo el acta y la fórmula del encabezado. El acta la firma
+# la secretaría, así que el título tiene que ser el que consta en el nombramiento —
+# "Segunda Teniente de Alcalde que preside por delegación", NO "Alcaldesa en funciones",
+# que sería un cargo que nadie le ha dado.
+PRESIDENCIA = {
+    # Cómo se nombra a quien preside en el cuerpo del acta, cada vez que interviene.
+    "tratamiento": "la Sra. Teniente de Alcalde",
+    # Fórmula del encabezado, detrás de "bajo la Presidencia de ".
+    "formula": ("la segunda Teniente Alcalde Dª Lorena Luján Chujfi, que actúa en virtud "
+                "de la delegación de funciones efectuadas por el Sr. Alcalde – Presidente, "
+                "D. Sergio de Fez Cerezuela"),
+    # Género de las dos fórmulas fijas de la plantilla.
+    "abre_la_sesion": "la Presidenta abre la sesión",
+    "secretaria": "la Secretaria",
+}
+
+CORPORACION = f"""CORPORACIÓN MUNICIPAL (para escribir bien los nombres —ver regla 4— y
+acertar el tratamiento —ver regla 8—):
+- Sergio de Fez Cerezuela — ALCALDE-PRESIDENTE (PSOE), de baja médica. Sigue siendo el
+  Alcalde a todos los efectos: es "el Sr. Alcalde D. Sergio de Fez Cerezuela". Cuando
+  asiste a la sesión e interviene en el debate sin presidirla, lo hace como un concejal
+  más: "el Sr. concejal D. Sergio de Fez Cerezuela".
+- Lorena Luján Chujfi — SEGUNDA TENIENTE DE ALCALDE (PSOE). Preside las sesiones en
+  virtud de la delegación de funciones efectuada por el Sr. Alcalde-Presidente.
+  NO es Alcaldesa ni Alcaldesa en funciones y NUNCA se la nombra así en el acta: es
+  {PRESIDENCIA['tratamiento']}, o Dª Lorena Luján Chujfi.
 - Mª Rosario Cerdán Pérez — Concejala, equipo de gobierno (PSOE). En la sesión se
   dirigen a ella como "Chari": es la misma persona.
 - Mario Cerdán Ochoa — Concejal, equipo de gobierno (PSOE)
-- Joaquín Martínez — Concejal, oposición (PP)
-- Pedro José Martínez — Concejal, oposición (PP)
+- Joaquín Martínez Luján — Concejal, oposición (PP)
+- Pedro José Martínez Martínez — Concejal, oposición (PP)
   ATENCIÓN: son DOS personas distintas que comparten apellido. "Martínez" a secas no
   identifica a ninguno de los dos. Para atribuirle una intervención a uno de ellos hace
   falta el nombre de pila, o que la etiqueta de locutor esté identificada según las
   reglas de arriba. Si solo se oye el apellido, la atribución es "no identificado en la
   grabación".
-- Fernando Pons — Concejal, oposición (AIE)
-- Elena — Secretaria del Ayuntamiento. NO es miembro de la Corporación y no vota: da fe
-  de la sesión, lee acuerdos e informa cuando se le pide. Su voz sale en la grabación,
-  pero nunca va en `asistentes` ni en `ausentes`.
+- Fernando Pons Mayor — Concejal, oposición (Agrupación Independiente de Enguídanos)
+- Mª Elena Valera Navarro — Secretaria-Interventora del Ayuntamiento. NO es miembro de
+  la Corporación y no vota: da fe de la sesión, lee acuerdos e informa cuando se le pide.
+  Su voz sale en la grabación, pero nunca va en `asistentes` ni en `ausentes`.
 
-Quién preside se te dice para acertar el TRATAMIENTO al redactar ("la Sra. Alcaldesa"),
-NO para rellenar el campo `presidente` ni para atribuir intervenciones: eso sigue
-exigiendo que la grabación lo diga (reglas 1, 4 y 5)."""
+Ese listado da el CARGO y el TRATAMIENTO, que son datos oficiales y no dependen de la
+grabación. Lo que sigue exigiendo que la grabación lo diga es QUIÉN HABLA y QUÉ DICE:
+el listado nunca sirve para rellenar el campo `presidente` ni para atribuir
+intervenciones que la grabación no atribuye (reglas 1, 4 y 5)."""
 
 
 DIARIZACION = """ETIQUETAS DE LOCUTOR:
@@ -192,43 +245,87 @@ REGLAS INNEGOCIABLES:
 
 REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
 7. Escribe en PRESENTE de indicativo, con el registro impersonal y formal propio de un
-   acta: "La Sra. Alcaldesa da cuenta...", "Se acuerda...". Nunca en pasado.
-8. Usa el tratamiento formal del acta: D., Dª, Sr. concejal, Sra. concejala, seguidos del
-   nombre completo. A quien preside la sesión trátalo por el cargo y en su género: hoy
-   preside Dª Lorena Luján Chujfi como Alcaldesa en funciones, así que es "la Sra.
-   Alcaldesa", nunca "el Sr. Alcalde". Introduce las intervenciones con la fórmula
-   habitual: "Toma la palabra el Sr. concejal D. Fernando Pons para decir que...", "Le
-   responde la Sra. Alcaldesa que...".
-9. Los títulos de los puntos van EN MAYÚSCULAS, como en las actas.
+   acta: "{PRESIDENCIA['tratamiento'].capitalize()} da cuenta...", "Se acuerda...".
+   Nunca en pasado.
+8. Usa el tratamiento formal del acta —D., Dª, Sr. concejal, Sra. concejala— seguido del
+   nombre y los APELLIDOS COMPLETOS la primera vez que aparece cada persona en un punto:
+   "el Sr. concejal D. Fernando Pons Mayor", "la concejala Dª Mª Rosario Cerdán Pérez".
+   Después basta con la forma corta ("el Sr. Pons"). Cada miembro de la Corporación se
+   nombra por el cargo que consta en el listado de arriba, no por el papel que le supongas
+   en la sesión. Introduce las intervenciones con la fórmula habitual: "Toma la palabra el
+   Sr. concejal D. Fernando Pons Mayor, quien...", "Interviene el concejal D. Joaquín
+   Martínez Luján...", "Le responde {PRESIDENCIA['tratamiento']} que...".
+9. Los títulos de los puntos van EN MAYÚSCULAS, como en las actas. Si el título del orden
+   del día enumera varios asuntos (varias obras, varios expedientes), déjalo en el título
+   solo el enunciado común y abre el texto del punto con la relación en una lista de
+   guiones, un elemento por línea.
 10. Las intervenciones van DENTRO del texto del punto al que corresponden, en el orden en
     que se producen. No hay una sección separada de intervenciones.
-11. Los puntos de la parte resolutiva terminan con el acuerdo desglosado cuando lo hay:
-    "el Pleno del Ayuntamiento ACUERDA: PRIMERO. ... SEGUNDO. ...".
+11. El acuerdo NO se escribe en `texto`: va en el campo `acuerdo`, en un solo párrafo que
+    continúe la fórmula "El Pleno del Ayuntamiento ACUERDA, ". Solo se desglosa en
+    "PRIMERO. ... SEGUNDO. ..." si el Pleno adopta varios acuerdos distintos en el mismo
+    punto. Un punto resolutivo que no llega a votarse también puede tener acuerdo ("dejar
+    el punto sobre la mesa, con el compromiso de...") si eso es lo que se conviene en la
+    sesión.
 12. Los puntos de actividad de control terminan con "La Corporación se da por informada."
     cuando así ocurre en la grabación.
 13. Cuando una frase sea textual de un concejal y valga la pena recogerla tal cual,
     entrecomíllala.
-14. Sé extenso y concreto: recoge los argumentos de cada postura, las cifras, plazos,
-    importes y expedientes que se citen. Varios párrafos si el punto lo merece.
-15. No cites marcas de tiempo dentro de los textos redactados, ni escribas recuentos de
-    votos en el texto: los recuentos van en el campo `votacion`.
-16. Español claro y neutro.
+14. PÁRRAFOS. El texto de un punto se parte en párrafos separados por una línea en blanco,
+    uno por bloque de debate —la exposición del proponente, la réplica de la oposición, la
+    respuesta del equipo de gobierno, el cierre—, de tres a seis frases cada uno. Un punto
+    entero en un solo párrafo es un defecto.
+15. CIFRAS, IMPORTES Y DATOS DE TERCEROS. Un acta municipal es un documento público que se
+    archiva: una cifra escrita en ella queda como dato oficial del Ayuntamiento aunque en
+    la sesión fuera solo un comentario. Por eso:
+    - Se recoge la cifra que el interviniente vincula a un documento identificable: el
+      presupuesto de un expediente, una factura, una partida, un acta anterior, una
+      declaración tributaria, una ampliación de crédito. Escríbela con su fuente ("con un
+      presupuesto de 48.279 euros", "una ampliación de crédito de 81.000 euros que figura
+      en un acta").
+    - Se OMITE la cifra suelta que alguien lanza de memoria en el fragor del debate y que
+      no sostiene ningún argumento del punto: importes accesorios, sumas redondeadas de
+      pasada, costes citados de oídas. Omitirlas no empobrece el acta; escribirlas
+      convierte un comentario en un dato municipal.
+    - Si una estimación es relevante porque es justo lo que se discute, recógela atribuida
+      a quien la hace y calificada como lo que es: "cuando valoraciones informales la
+      sitúan en torno a los 4.000 o 5.000 euros".
+    - Si en la propia sesión alguien rectifica o matiza una cifra, el acta recoge la
+      rectificación, no solo la cifra inicial.
+    - Lo mismo con los datos de terceros: nombres de empresas, adjudicatarios o
+      particulares se escriben cuando el interviniente los lee de un documento; una
+      imputación hablada sobre alguien que no está en la sesión y no consta en ningún
+      documento no se traslada al acta.
+16. Concreto y sobrio: recoge los argumentos de cada postura y las decisiones, sin
+    reproducir el tira y afloja. Cuando el debate se agría, el acta lo resume en una
+    frase ("El debate se vuelve tenso, con acusaciones de mala gestión por parte de la
+    oposición y defensas del trabajo realizado por parte del equipo de Gobierno"), no
+    transcribe los reproches uno a uno.
+17. No cites marcas de tiempo dentro de los textos redactados, ni escribas recuentos de
+    votos en el texto: los recuentos van en el campo `votacion` y el documento compone la
+    frase a partir de ahí.
+18. LA APERTURA DE LA SESIÓN. Lo que quien preside declara antes de entrar en el primer
+    punto —el aviso de que la sesión se graba y se difunde, la constancia de que preside
+    por delegación, la exclusión de un punto del orden del día, una ausencia justificada—
+    NO es parte del punto 1: va en `declaraciones_apertura`, casi literal. El texto del
+    punto 1 empieza en el debate de ese punto.
+19. Español claro y neutro.
 
 LA CONVOCATORIA OFICIAL:
 Puede que junto a la transcripción recibas la CONVOCATORIA del pleno: el documento con el
 orden del día que el Ayuntamiento publica ANTES de la sesión, a menudo escaneado. Si la
 recibes, mándate por estas cuatro reglas. Si no, ignóralas.
-17. La convocatoria manda en la FORMA. Los títulos exactos de los puntos, su numeración,
+20. La convocatoria manda en la FORMA. Los títulos exactos de los puntos, su numeración,
     los números de expediente y el tipo de sesión (ordinaria o extraordinaria, y el motivo
     si es extraordinaria) se toman de ella, no de lo que se entienda en el audio. Copia los
     títulos literalmente, en mayúsculas.
-18. La grabación manda en el FONDO. Qué se debate, qué se acuerda, qué se vota y quién
+21. La grabación manda en el FONDO. Qué se debate, qué se acuerda, qué se vota y quién
     interviene sale SOLO de la transcripción. La convocatoria dice lo previsto; el acta
     recoge lo ocurrido, y no siempre coinciden.
-19. Un punto que figura en la convocatoria pero del que la grabación no dice nada NO se
+22. Un punto que figura en la convocatoria pero del que la grabación no dice nada NO se
     redacta como si se hubiera tratado. Si en la grabación se retira, se aplaza o se deja
     sobre la mesa, hazlo constar así; si sencillamente no aparece, omítelo.
-20. Un punto que se trata en la grabación y no está en la convocatoria SÍ va al acta —
+23. Un punto que se trata en la grabación y no está en la convocatoria SÍ va al acta —
     suele ser un asunto de urgencia —, con `numero` en null si no se le da número.
 """
 
@@ -269,10 +366,21 @@ Tampoco es un problema el tiempo verbal ni el estilo: el informe se redacta en p
 a propósito.
 
 Tampoco son problema las fórmulas y el tratamiento propios de un acta municipal: que el
-informe escriba "la Sra. Alcaldesa", "D. Joaquín Martínez", "Toma la palabra...", "La
-Corporación se da por informada" o los títulos en mayúsculas es la redacción esperada, no
-una afirmación inventada, aunque la transcripción no contenga esas palabras literales. Sí
-debes señalar que se atribuya una intervención a una persona que la grabación no identifica.
+informe escriba "{PRESIDENCIA['tratamiento']}", "D. Joaquín Martínez Luján", "Toma la
+palabra...", "La Corporación se da por informada", "El Pleno del Ayuntamiento ACUERDA" o
+los títulos en mayúsculas es la redacción esperada, no una afirmación inventada, aunque la
+transcripción no contenga esas palabras literales. Los cargos y tratamientos salen del
+listado de la Corporación, que es fuente oficial: que quien preside aparezca como
+{PRESIDENCIA['tratamiento']} y no como alcaldesa, o que el Alcalde titular aparezca como
+tal aunque no presida, es lo correcto. Sí debes señalar que se atribuya una intervención a
+una persona que la grabación no identifica.
+
+El redactor tiene instrucciones de OMITIR del acta las cifras accesorias que se dicen de
+palabra sin documento que las respalde, y de no trasladar imputaciones habladas sobre
+terceros que no constan en ningún documento. Una cifra que está en la transcripción y no
+en el informe NO es un problema: es la depuración esperada. Tu trabajo es el sentido
+contrario — datos que el informe afirma y la transcripción no respalda —, nunca reclamar
+que se añada lo que se omitió.
 
 Comprueba también que cada punto está en la parte correcta: 'resolutiva' si se somete a
 acuerdo del Pleno, 'control' si es un decreto de alcaldía o una dación de cuenta de la que
@@ -315,10 +423,16 @@ Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
 4. No toques el resto del informe.
 5. Mismas reglas que el redactor: nada que no esté en la transcripción.
 6. Conserva la redacción en presente de indicativo, el registro y las fórmulas de acta
-   municipal (tratamiento D./Dª/Sr./Sra., "Toma la palabra...", títulos en mayúsculas,
-   acuerdos desglosados en PRIMERO./SEGUNDO.) y el nivel de detalle del texto original;
-   no lo resumas ni lo pases a pasado.
-7. Si recibes la CONVOCATORIA oficial del pleno, sigue mandando en la forma (títulos
+   municipal (tratamiento D./Dª/Sr./Sra. con apellidos completos, "Toma la palabra...",
+   títulos en mayúsculas, el acuerdo en el campo `acuerdo` y no dentro de `texto`, los
+   párrafos separados por línea en blanco) y el nivel de detalle del texto original; no lo
+   resumas ni lo pases a pasado.
+   Los cargos salen del listado de la Corporación: quien preside es
+   {PRESIDENCIA['tratamiento']}, nunca alcaldesa; el Alcalde titular es el Sr. Alcalde
+   aunque no presida.
+7. No devuelvas al informe una cifra o un dato de un tercero que el redactor omitió: si el
+   auditor no lo señala como problema, es que la omisión era deliberada.
+8. Si recibes la CONVOCATORIA oficial del pleno, sigue mandando en la forma (títulos
    literales, numeración, expedientes, tipo de sesión) mientras la grabación manda en el
    fondo. No añadas contenido a un punto convocado del que la transcripción no habla:
    eso es justo lo que el auditor señala."""

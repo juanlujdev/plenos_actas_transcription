@@ -66,7 +66,7 @@ def fecha_larga(iso: str) -> str:
 
 from pathlib import Path
 
-from plenos_informe import InformePleno, Votacion
+from plenos_informe import PRESIDENCIA, InformePleno, Votacion
 
 PLANTILLAS_DIR = Path(__file__).resolve().parent / "plantillas"
 PLANTILLAS = {"ordinaria": "acta_ordinaria.docx",
@@ -77,10 +77,22 @@ HUECO = "___________"
 # Índices de las anclas dentro de la plantilla. Las dos plantillas son
 # estructuralmente idénticas (9 tablas), así que sirven para ambas.
 _T_EXPEDIENTE, _T_DATOS = 1, 2
-_T_RESOLUTIVA, _T_CONTROL, _T_RUEGOS = 4, 6, 8
+# La plantilla reparte los puntos en tres bloques —A) PARTE RESOLUTIVA, B) ACTIVIDAD DE
+# CONTROL, C) RUEGOS Y PREGUNTAS—, pero el acta que la secretaría firma no los usa:
+# numera los puntos como vienen en el orden del día y los escribe seguidos bajo un único
+# encabezado. Se reaprovecha la banda de A) como ese encabezado y se eliminan los otros
+# dos bloques y sus tablas de contenido.
+_T_ENCABEZADO_ORDEN, _T_ORDEN = 3, 4
+_T_SOBRANTES = (8, 7, 6, 5)  # de mayor a menor: borrar por índice no desplaza los previos
 _FILA_TIPO, _FILA_FECHA, _FILA_DURACION, _FILA_PRESIDENTE = 1, 2, 3, 5
 
 _RESULTADO = {"aprobado": "queda aprobado", "rechazado": "queda rechazado"}
+
+# El párrafo fijo que trae la plantilla, en masculino genérico. Se sustituye por la
+# fórmula con el género de quien preside y de quien da fe (ver PRESIDENCIA).
+_FORMULA_PLANTILLA = ("Una vez verificada por el Secretario la válida constitución del "
+                      "órgano, el Presidente abre sesión, procediendo a la deliberación "
+                      "sobre los asuntos incluidos en el Orden del Día")
 
 
 # ── composición de textos ─────────────────────────────────────────────────────
@@ -125,15 +137,63 @@ def frase_votacion(v: Votacion | None) -> str:
     return f"Sometido el asunto a votación, {_RESULTADO[v.resultado]}."
 
 
-def parrafo_apertura(informe: InformePleno) -> str:
-    """Narrativa de asistencia. Solo nombra a quien la grabación identifica."""
-    partes = []
+def frase_acuerdo(punto) -> str:
+    """Cierre de un punto resolutivo. El acta integra el recuento en la propia fórmula
+    del acuerdo —"ACUERDA: ..., por tres votos a favor, tres en contra"— en vez de
+    añadir una frase de votación aparte, que sonaba a repetición."""
+    v = punto.votacion
+    acuerdo = (punto.acuerdo or "").strip().rstrip(".")
+    if not acuerdo or (v is not None and v.resultado == "rechazado"):
+        return frase_votacion(v)
+    cabeza = "El Pleno del Ayuntamiento ACUERDA"
+    if v is None or v.resultado in ("sin votación", "no consta"):
+        return f"{cabeza}, {acuerdo}."
+    if v.modalidad == "unanimidad":
+        return f"{cabeza} por unanimidad, {acuerdo}."
+    recuento = _recuento_en_letra(v)
+    frase = f"{cabeza}, {acuerdo}, por {recuento}." if recuento else f"{cabeza}, {acuerdo}."
+    if v.voto_de_calidad:
+        frase += (f" En virtud de su voto de calidad, {PRESIDENCIA['tratamiento']} "
+                  f"resuelve el empate a favor de la propuesta.")
+    return frase
+
+
+def parrafos_apertura(informe: InformePleno) -> list[str]:
+    """Encabezado narrativo del acta: dónde y cuándo se reúne el Pleno, quién preside y
+    en virtud de qué, quién asiste, y las declaraciones que la Presidencia pronuncia al
+    abrir la sesión. Solo nombra a quien la grabación identifica."""
+    hora = hora_en_letra(informe.hora_inicio) if informe.hora_inicio else HUECO
+    fecha = fecha_larga(informe.fecha_pleno) if informe.fecha_pleno else HUECO
+    tipo = informe.tipo_sesion if informe.tipo_sesion != "no consta" else HUECO
+    solicitud = (f", a solicitud de los Sres. Concejales {_enumerar(informe.solicitantes)}"
+                 if informe.solicitantes else "")
+    parrafos = [
+        f"En la localidad de Enguídanos siendo {hora} del día {fecha}, se reúnen en el "
+        f"Salón de Actos de la Casa Consistorial el Pleno de este Ayuntamiento en sesión "
+        f"{tipo}, previamente convocada{solicitud}, bajo la Presidencia de "
+        f"{PRESIDENCIA['formula']}.",
+    ]
+
+    asistencia = []
     if informe.asistentes:
-        partes.append(f"Asisten {_enumerar(informe.asistentes)}.")
+        asistencia.append(f"Asisten {_enumerar(informe.asistentes)}.")
     if informe.ausentes:
         verbo = "No asisten" if len(informe.ausentes) > 1 else "No asiste"
-        partes.append(f"{verbo} {_enumerar(informe.ausentes)}.")
-    return " ".join(partes) if partes else HUECO
+        asistencia.append(f"{verbo} {_enumerar(informe.ausentes)}, "
+                          f"que justifica{'n' if len(informe.ausentes) > 1 else ''} su ausencia.")
+    parrafos.append(" ".join(asistencia) if asistencia else HUECO)
+
+    verificacion = (f"Una vez verificada por {PRESIDENCIA['secretaria']} la válida "
+                    f"constitución del órgano, {PRESIDENCIA['abre_la_sesion']}")
+    if informe.declaraciones_apertura:
+        parrafos.append(f"{verificacion} y pronuncia las siguientes palabras:")
+        parrafos.extend(informe.declaraciones_apertura)
+        parrafos.append("Se procede a la deliberación sobre los asuntos incluidos en el "
+                        "Orden del Día.")
+    else:
+        parrafos.append(f"{verificacion}, procediendo a la deliberación sobre los asuntos "
+                        f"incluidos en el Orden del Día.")
+    return parrafos
 
 
 def formula_cierre(informe: InformePleno) -> str:
@@ -149,13 +209,21 @@ def formula_cierre(informe: InformePleno) -> str:
 
 
 def _texto_punto(punto) -> list[str]:
-    """Un punto del orden del día como lista de párrafos."""
+    """Un punto del orden del día como lista de párrafos. El modelo separa los bloques
+    de debate con una línea en blanco; aquí se convierten en párrafos del documento."""
     numero = f"{punto.numero}º) " if punto.numero is not None else ""
-    parrafos = [f"{numero}{punto.titulo}.- {punto.texto}"]
-    frase = frase_votacion(punto.votacion)
+    parrafos = [p.strip() for p in punto.texto.split("\n\n") if p.strip()] or [""]
+    parrafos[0] = f"{numero}{punto.titulo}.- {parrafos[0]}"
+    frase = frase_acuerdo(punto)
     if frase:
         parrafos.append(frase)
     return parrafos
+
+
+def _por_orden_del_dia(puntos):
+    """Los puntos van como los numera la convocatoria, no agrupados por parte. Los que
+    no llevan número (asuntos de urgencia) cierran, en el orden en que se trataron."""
+    return sorted(puntos, key=lambda p: (p.numero is None, p.numero or 0))
 
 
 # ── manipulación del .docx ────────────────────────────────────────────────────
@@ -231,20 +299,28 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
         # con la convención de la celda.
         _poner_celda(datos.rows[_FILA_PRESIDENTE].cells[1], informe.presidente.upper())
 
-    _escribir(_parrafo_con_texto(doc, HUECO), parrafo_apertura(informe))
+    # El hueco de la plantilla es un solo párrafo; el encabezado del acta son varios.
+    # El primero reaprovecha ese párrafo (y su estilo) y el resto se inserta detrás,
+    # antes de la fórmula fija, que también se reescribe con el género de la Presidencia.
+    apertura = parrafos_apertura(informe)
+    hueco = _parrafo_con_texto(doc, HUECO)
+    _escribir(hueco, apertura[0])
+    formula = _parrafo_con_texto(doc, _FORMULA_PLANTILLA)
+    for texto in apertura[1:]:
+        formula.insert_paragraph_before(texto, style=hueco.style)
+    formula._element.getparent().remove(formula._element)
 
-    for indice, parte in ((_T_RESOLUTIVA, "resolutiva"), (_T_CONTROL, "control")):
-        puntos = [p for p in informe.orden_del_dia if p.parte == parte]
-        if puntos:
-            parrafos = [linea for p in puntos for linea in _texto_punto(p)]
-            _poner_parrafos(doc.tables[indice].rows[0].cells[0], parrafos)
-
-    if informe.ruegos_y_preguntas:
-        parrafos = []
-        for bloque in informe.ruegos_y_preguntas:
-            parrafos.append(f"Ruegos y preguntas formuladas por {bloque.formulados_por}:")
-            parrafos.extend(f"- {p}" for p in bloque.puntos)
-        _poner_parrafos(doc.tables[_T_RUEGOS].rows[0].cells[0], parrafos)
+    _poner_celda(doc.tables[_T_ENCABEZADO_ORDEN].rows[0].cells[0], "ORDEN DEL DÍA")
+    parrafos = [linea for p in _por_orden_del_dia(informe.orden_del_dia)
+                for linea in _texto_punto(p)]
+    for bloque in informe.ruegos_y_preguntas:
+        parrafos.append(f"Ruegos y preguntas formuladas por {bloque.formulados_por}:")
+        parrafos.extend(f"- {p}" for p in bloque.puntos)
+    if parrafos:
+        _poner_parrafos(doc.tables[_T_ORDEN].rows[0].cells[0], parrafos)
+    for indice in _T_SOBRANTES:
+        tabla = doc.tables[indice]._element
+        tabla.getparent().remove(tabla)
 
     firma = _parrafo_con_texto(doc, "DOCUMENTO FIRMADO ELECTRÓNICAMENTE")
     firma.insert_paragraph_before(formula_cierre(informe), style=firma.style)

@@ -39,22 +39,26 @@ print("── esquemas pydantic ────────────────
 INFORME_MINIMO = {
     "tipo_sesion": "ordinaria",
     "motivo_convocatoria": None,
+    "solicitantes": [],
     "fecha_pleno": "2026-06-26",
     "hora_inicio": "12:00",
     "hora_fin": "13:30",
     "presidente": "Sergio de Fez Cerezuela",
     "asistentes": ["Lorena Luján Chujfi", "Mario Cerdán Ochoa"],
     "ausentes": ["Fernando Pons"],
+    "declaraciones_apertura": [],
     "orden_del_dia": [
         {"numero": 1, "parte": "resolutiva",
          "titulo": "APROBACIÓN SI PROCEDE DEL ACTA DE LA SESIÓN ANTERIOR",
-         "texto": "El Sr. Alcalde da cuenta del acta de la sesión anterior. No se formulan observaciones.",
+         "texto": "El Sr. Alcalde da cuenta del acta de la sesión anterior.\n\nNo se formulan observaciones.",
+         "acuerdo": "aprobar el acta de la sesión anterior",
          "votacion": {"resultado": "aprobado", "modalidad": "unanimidad",
                       "a_favor": None, "en_contra": None, "abstenciones": None,
-                      "timestamp": "00:03:12"}},
+                      "voto_de_calidad": False, "timestamp": "00:03:12"}},
         {"numero": 2, "parte": "control",
          "titulo": "DECRETOS DE ALCALDÍA",
          "texto": "El Sr. Alcalde da cuenta de los decretos dictados. La Corporación se da por informada.",
+         "acuerdo": None,
          "votacion": None},
     ],
     "ruegos_y_preguntas": [
@@ -79,7 +83,8 @@ test("ausentes recogidos", informe.ausentes, ["Fernando Pons"])
 # sabe casi nada debe parsear igual, sin forzar al modelo a rellenar huecos.
 _MINIMO_VACIO = dict(INFORME_MINIMO, tipo_sesion="no consta", fecha_pleno=None,
                      hora_inicio=None, hora_fin=None, presidente=None,
-                     asistentes=[], ausentes=[], ruegos_y_preguntas=[])
+                     asistentes=[], ausentes=[], declaraciones_apertura=[],
+                     ruegos_y_preguntas=[])
 _vacio = InformePleno.model_validate(_MINIMO_VACIO)
 test("vía de escape: tipo de sesión no consta", _vacio.tipo_sesion, "no consta")
 test("vía de escape: sin asistencia registrada", _vacio.asistentes, [])
@@ -340,7 +345,9 @@ print("── acta: render del .docx ──────────────�
 import tempfile
 
 from docx import Document as _Document
-from plenos_acta import render_acta, frase_votacion, parrafo_apertura, formula_cierre, HUECO
+from plenos_acta import (
+    render_acta, frase_votacion, frase_acuerdo, parrafos_apertura, formula_cierre, HUECO,
+)
 
 # Frase de votación: los recuentos van en letra y un None nunca se imprime como cero.
 test("votación: unanimidad",
@@ -361,10 +368,63 @@ test("votación: recuento sin cifras no inventa ceros",
      "Sometido el asunto a votación, queda aprobado.")
 test("votación: sin votación no genera frase", frase_votacion(None), "")
 
-_apertura = parrafo_apertura(informe)
+# Cierre de un punto resolutivo: el recuento va DENTRO de la fórmula del acuerdo. Antes
+# se añadía una frase de votación aparte y el acta repetía dos veces lo mismo.
+def _punto(**kw):
+    return PuntoOrdenDia.model_validate(dict(
+        {"numero": 1, "parte": "resolutiva", "titulo": "T", "texto": "x",
+         "acuerdo": None, "votacion": None}, **kw))
+
+
+def _votacion(**kw):
+    return dict({"resultado": "aprobado", "modalidad": "recuento", "a_favor": None,
+                 "en_contra": None, "abstenciones": None, "voto_de_calidad": False,
+                 "timestamp": None}, **kw)
+
+
+test("acuerdo: recuento dentro de la fórmula ACUERDA, con el voto de calidad",
+     frase_acuerdo(_punto(acuerdo="establecer la periodicidad en 40 días",
+                          votacion=_votacion(a_favor=3, en_contra=3, voto_de_calidad=True))),
+     "El Pleno del Ayuntamiento ACUERDA, establecer la periodicidad en 40 días, por tres "
+     "votos a favor y tres en contra. En virtud de su voto de calidad, la Sra. Teniente "
+     "de Alcalde resuelve el empate a favor de la propuesta.")
+test("acuerdo: unanimidad",
+     frase_acuerdo(_punto(acuerdo="aprobar la apertura del patio.",
+                          votacion=_votacion(modalidad="unanimidad"))),
+     "El Pleno del Ayuntamiento ACUERDA por unanimidad, aprobar la apertura del patio.")
+test("acuerdo: sin votación también se acuerda dejar el punto sobre la mesa",
+     frase_acuerdo(_punto(acuerdo="dejar el punto sobre la mesa",
+                          votacion=_votacion(resultado="sin votación", modalidad="no consta"))),
+     "El Pleno del Ayuntamiento ACUERDA, dejar el punto sobre la mesa.")
+test("acuerdo: un punto rechazado no lleva fórmula de acuerdo",
+     frase_acuerdo(_punto(acuerdo="realizar una auditoría",
+                          votacion=_votacion(resultado="rechazado", a_favor=1, en_contra=2))),
+     "Se producen las votaciones con un voto a favor y dos en contra. El asunto queda rechazado.")
+test("acuerdo: punto de control no genera frase", frase_acuerdo(_punto()), "")
+
+_apertura = "\n".join(parrafos_apertura(informe))
+test("apertura: fórmula de constitución con la hora y la fecha",
+     "siendo las doce horas del día 26 de junio de 2026" in _apertura, True)
+test("apertura: preside por delegación, nunca como alcaldesa",
+     "delegación de funciones" in _apertura and "Alcaldesa" not in _apertura, True)
 test("apertura: nombra a los asistentes", "Mario Cerdán Ochoa" in _apertura, True)
 test("apertura: hace constar la ausencia", "No asiste" in _apertura, True)
-test("apertura: sin datos deja el hueco", parrafo_apertura(_vacio), "___________")
+test("apertura: constitución verificada por la Secretaria, en femenino",
+     "verificada por la Secretaria" in _apertura
+     and "la Presidenta abre la sesión" in _apertura, True)
+test("apertura: sin datos deja huecos",
+     HUECO in "\n".join(parrafos_apertura(_vacio)), True)
+
+# Lo que la Presidencia declara al abrir (grabación, delegación, exclusión de un punto)
+# va en el encabezado del acta, no dentro del primer punto del orden del día.
+_con_declaraciones = InformePleno.model_validate(dict(
+    INFORME_MINIMO, declaraciones_apertura=["La Sesión tiene carácter público."]))
+_ap_decl = "\n".join(parrafos_apertura(_con_declaraciones))
+test("apertura: recoge las declaraciones de la Presidencia",
+     "La Sesión tiene carácter público." in _ap_decl, True)
+test("apertura: tras las declaraciones se pasa al orden del día",
+     _ap_decl.endswith("Se procede a la deliberación sobre los asuntos incluidos en el "
+                       "Orden del Día."), True)
 
 _cierre = formula_cierre(informe)
 test("cierre: hora en letra", "las trece horas y treinta minutos" in _cierre, True)
@@ -394,21 +454,34 @@ test("acta: presidente de la grabación en mayúsculas, como la celda de la plan
      "SERGIO DE FEZ CEREZUELA" in _tablas[2], True)
 test("acta: expediente en blanco", "PLN/2026/" in _tablas[1], False)
 test("acta: expediente sustituido por el hueco", HUECO in _tablas[1], True)
-test("acta: punto resolutivo en la parte A", "APROBACIÓN SI PROCEDE" in _tablas[4], True)
-test("acta: punto de control en la parte B", "DECRETOS DE ALCALDÍA" in _tablas[6], True)
-test("acta: el punto de control no está en la parte A", "DECRETOS DE ALCALDÍA" in _tablas[4], False)
+# El acta que firma la secretaría no reparte los puntos en A) resolutiva / B) control /
+# C) ruegos: los escribe seguidos, numerados como vienen en el orden del día.
+test("acta: un único encabezado ORDEN DEL DÍA", _tablas[3].strip(), "ORDEN DEL DÍA")
+test("acta: sin las bandas A)/B)/C) de la plantilla",
+     any("PARTE RESOLUTIVA" in t or "ACTIVIDAD DE CONTROL" in t for t in _tablas), False)
+test("acta: resolutiva y control seguidos bajo el mismo encabezado",
+     "APROBACIÓN SI PROCEDE" in _tablas[4] and "DECRETOS DE ALCALDÍA" in _tablas[4], True)
+test("acta: los puntos van en el orden de la convocatoria",
+     _tablas[4].index("APROBACIÓN SI PROCEDE") < _tablas[4].index("DECRETOS DE ALCALDÍA"), True)
 test("acta: numeración del punto", "1º)" in _tablas[4], True)
-test("acta: frase de votación en la parte A", "por unanimidad de los asistentes" in _tablas[4], True)
-test("acta: ruegos con quien los formula", "D. Joaquín Martínez" in _tablas[8], True)
-test("acta: contenido del ruego", "camino de la Fuente" in _tablas[8], True)
+test("acta: el acuerdo lleva su fórmula y su modalidad de votación",
+     "El Pleno del Ayuntamiento ACUERDA por unanimidad" in _tablas[4], True)
+test("acta: el debate se parte en párrafos, no en un bloque",
+     "El Sr. Alcalde da cuenta del acta de la sesión anterior.\nNo se formulan" in _tablas[4],
+     True)
+test("acta: ruegos con quien los formula", "D. Joaquín Martínez" in _tablas[4], True)
+test("acta: contenido del ruego", "camino de la Fuente" in _tablas[4], True)
 test("acta: sin marcas de tiempo", "00:03:12" in "".join(_tablas), False)
 test("acta: fórmula de cierre presente", "no habiendo más asuntos que tratar" in _parrafos, True)
 test("acta: asistentes en el párrafo de apertura", "Lorena Luján Chujfi" in _parrafos, True)
 
-# Un pleno sin ruegos conserva el "No hay asuntos" de la plantilla en esa sección.
+# Los "No hay asuntos" de los bloques B) y C) de la plantilla desaparecen con ellos: en
+# un acta lineal no hay sección que pueda quedarse vacía.
 _sin_ruegos = InformePleno.model_validate(dict(INFORME_MINIMO, ruegos_y_preguntas=[]))
 _tablas_sr, _ = _acta_generada(_sin_ruegos)
-test("acta: sección vacía conserva 'No hay asuntos'", "No hay asuntos" in _tablas_sr[8], True)
+test("acta: sin ruegos no quedan secciones huérfanas",
+     any("No hay asuntos" in t for t in _tablas_sr), False)
+test("acta: la plantilla queda en cinco tablas", len(_tablas_sr), 5)
 
 # Decisión deliberada de la spec: si la grabación no identifica quién preside,
 # la celda "Presidida por" conserva el nombre de la plantilla del Ayuntamiento
