@@ -37,6 +37,8 @@ from pathlib import Path
 
 import requests
 
+from plenos_informe import normalizar_fecha
+
 # UTF-8 en Windows
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -69,11 +71,6 @@ def leer_convocatoria(ruta: str | None) -> bytes | None:
         raise ValueError(f"la convocatoria debe ser un PDF, no {origen.suffix!r}: {origen}")
     return origen.read_bytes()
 
-_MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-          "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10,
-          "noviembre": 11, "diciembre": 12}
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Funciones puras (cubiertas por test_plenos.py)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -81,15 +78,7 @@ _MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 
 def extraer_fecha(titulo: str, fallback: str) -> str:
     """Busca una fecha en el título (26/06/2026, 5-3-2026, '3 de mayo de 2026');
     si no hay, devuelve el fallback."""
-    m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", titulo)
-    if m:
-        d, mes, a = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        return f"{a:04d}-{mes:02d}-{d:02d}"
-    m = re.search(r"(\d{1,2})\s+de\s+(" + "|".join(_MESES) + r")\s+(?:de\s+)?(\d{4})",
-                  titulo, re.IGNORECASE)
-    if m:
-        return f"{int(m.group(3)):04d}-{_MESES[m.group(2).lower()]:02d}-{int(m.group(1)):02d}"
-    return fallback
+    return normalizar_fecha(titulo) or fallback
 
 
 def _hms(segundos: float) -> str:
@@ -426,7 +415,17 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     ruta_acta = None
     if informe.tipo_sesion in ("ordinaria", "extraordinaria"):
         ruta_acta = destino / f"{fecha}-acta-{informe.tipo_sesion}.docx"
-        render_acta(informe, str(ruta_acta))
+        try:
+            render_acta(informe, str(ruta_acta))
+        except Exception as e:
+            # Llegar hasta aquí cuesta la transcripción y hasta tres vueltas de LLM. Que
+            # un fallo al componer el documento se lleve todo eso por delante no es
+            # aceptable: el JSON ya está en disco y --rehacer-acta lo recompone gratis.
+            ruta_acta = None
+            print(f"\nEl informe está guardado, pero el acta no se ha podido componer:"
+                  f"\n  {type(e).__name__}: {e}"
+                  f"\nCorrige el JSON si hace falta y vuelve a intentarlo SIN coste:"
+                  f"\n  python scripts/procesar_pleno.py --rehacer-acta {fecha}")
 
     print(f"\nTranscripción:  {ruta_md}")
     print(f"Informe JSON:   {ruta_json}")
@@ -493,6 +492,31 @@ def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None) -> int:
     return 0
 
 
+def _rehacer_acta(fecha: str) -> int:
+    """Vuelve a componer el .docx desde el informe.json ya guardado. No llama a ningún
+    LLM ni transcribe: coste cero. Es la forma de iterar el formato del acta —plantilla,
+    encabezado, fórmulas— sin volver a pagar lo que ya está pagado, y de recuperar el
+    documento cuando el render falla después de un bucle de LLM que sí costó dinero."""
+    from plenos_acta import render_acta
+    from plenos_informe import InformePleno
+
+    ruta_json = dir_borrador(fecha) / f"{fecha}-informe.json"
+    if not ruta_json.exists():
+        print(f"No hay informe guardado en {ruta_json}")
+        return 1
+    informe = InformePleno.model_validate_json(ruta_json.read_text(encoding="utf-8"))
+    if informe.tipo_sesion not in ("ordinaria", "extraordinaria"):
+        print("El tipo de sesión no consta en el informe: no se puede elegir plantilla.")
+        return 1
+    # El JSON se reescribe porque los validadores del esquema normalizan al cargarlo
+    # (fechas, horas, la fórmula del acuerdo): así el fichero refleja lo que se compuso.
+    ruta_json.write_text(informe.model_dump_json(indent=2), encoding="utf-8")
+    ruta_acta = dir_borrador(fecha) / f"{fecha}-acta-{informe.tipo_sesion}.docx"
+    render_acta(informe, str(ruta_acta))
+    print(f"Acta: {ruta_acta}")
+    return 0
+
+
 def publicar(fecha: str, ruta_pdf: str) -> int:
     """Publica en la web el acta ya revisada y sellada por la secretaria.
     Es el único punto del pipeline que escribe en public/."""
@@ -538,6 +562,9 @@ def main() -> int:
     parser.add_argument("--titulo", help="Título del pleno (con --audio; opcional con --url)")
     parser.add_argument("--rehacer-informe", metavar="YYYY-MM-DD",
                         help="Rehace el acta de un pleno ya transcrito (no vuelve a transcribir)")
+    parser.add_argument("--rehacer-acta", metavar="YYYY-MM-DD",
+                        help="Vuelve a componer el .docx desde el informe.json guardado: "
+                             "sin LLM y sin coste. Para iterar el formato del acta")
     parser.add_argument("--publicar", metavar="YYYY-MM-DD",
                         help="Publica en la web el acta sellada de ese pleno")
     parser.add_argument("--pdf", help="Ruta del PDF sellado (con --publicar)")
@@ -552,6 +579,9 @@ def main() -> int:
             print("--publicar requiere --pdf con la ruta del PDF sellado")
             return 1
         return publicar(args.publicar, args.pdf)
+
+    if args.rehacer_acta:
+        return _rehacer_acta(args.rehacer_acta)
 
     if args.rehacer_informe:
         return _rehacer_informe(args.rehacer_informe, args.convocatoria)

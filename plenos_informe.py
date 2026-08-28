@@ -8,9 +8,52 @@ transcripción pueda no contener es Optional o tiene un valor "no consta",
 para que el esquema nunca fuerce al modelo a inventar.
 """
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+_MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+          "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10,
+          "noviembre": 11, "diciembre": 12}
+
+
+def normalizar_fecha(texto: str) -> str | None:
+    """Cualquier forma habitual de escribir una fecha → 'YYYY-MM-DD'; None si no hay
+    ninguna. El esquema pide ISO, pero el modelo devuelve a veces '19 de mayo de 2026'
+    y el acta reventaba al componer la cabecera, después de haber pagado la
+    transcripción y tres vueltas de LLM. Una descripción de campo no es una validación:
+    lo que el documento necesita en un formato concreto se normaliza aquí."""
+    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", texto)
+    if m:
+        a, mes, d = (int(g) for g in m.groups())
+    else:
+        m = re.search(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", texto)
+        if m:
+            d, mes, a = (int(g) for g in m.groups())
+        else:
+            m = re.search(r"(\d{1,2})\s+de\s+(" + "|".join(_MESES) + r")\s+(?:de\s+)?(\d{4})",
+                          texto, re.IGNORECASE)
+            if not m:
+                return None
+            d, mes, a = int(m.group(1)), _MESES[m.group(2).lower()], int(m.group(3))
+    if not (1 <= mes <= 12 and 1 <= d <= 31):
+        return None
+    return f"{a:04d}-{mes:02d}-{d:02d}"
+
+
+def normalizar_hora(texto: str) -> str | None:
+    """'12:02', '12:02 horas', 'las 12.02' → '12:02'; None si no es una hora de reloj.
+    Un 'HH:MM:SS' se descarta a propósito: es una marca de tiempo de la transcripción,
+    no una hora. El modelo dio 'hora_fin': '02:39:28' —el minuto 2h39 de la grabación—
+    y el acta habría dicho que el Pleno se levantó a las dos de la madrugada."""
+    if re.search(r"\d{1,2}[:.]\d{2}[:.]\d{2}", texto):
+        return None
+    m = re.search(r"(\d{1,2})[:.](\d{2})", texto)
+    if not m:
+        return None
+    h, minutos = int(m.group(1)), int(m.group(2))
+    return f"{h:02d}:{minutos:02d}" if h <= 23 and minutos <= 59 else None
 
 
 class Votacion(BaseModel):
@@ -35,8 +78,9 @@ class PuntoOrdenDia(BaseModel):
     titulo: str = Field(description="Título del punto EN MAYÚSCULAS, como en un acta municipal")
     texto: str = Field(description=(
         "Deliberación del punto en prosa de acta, con las intervenciones incorporadas en el "
-        "orden en que se producen. Separa los párrafos con una línea en blanco: uno por "
-        "bloque de debate, de tres a seis frases cada uno. NO escribas aquí el acuerdo (va "
+        "orden en que se producen. VARIOS PÁRRAFOS, separados por el escape JSON \\n\\n: "
+        "uno por bloque de debate, de tres a seis frases cada uno. Un punto entero en un "
+        "solo párrafo es un defecto. NO escribas aquí el acuerdo (va "
         "en `acuerdo`) ni los recuentos de votos (van en `votacion`): el documento los "
         "compone a partir de esos campos."))
     acuerdo: str | None = Field(None, description=(
@@ -47,6 +91,29 @@ class PuntoOrdenDia(BaseModel):
         "'PRIMERO. ... SEGUNDO. ...' si el Pleno adopta varios acuerdos distintos en el "
         "mismo punto. null en los puntos de control y en los que no se acuerda nada."))
     votacion: Votacion | None = Field(None, description="null si el punto no se sometió a votación")
+
+    @model_validator(mode="after")
+    def _acuerdo_limpio(self):
+        """El acuerdo es la continuación de una fórmula que compone el documento, no una
+        frase suelta. El modelo tiende a devolverla ya escrita ("El Pleno del Ayuntamiento
+        ACUERDA, rechazar...") y el acta salía diciéndola dos veces; y a colar en `acuerdo`
+        el cierre de un punto de control ("La Corporación se da por informada"), que no es
+        un acuerdo del Pleno. Se normaliza en vez de fallar: son defectos de forma, y el
+        contenido es correcto."""
+        if not self.acuerdo:
+            return self
+        acuerdo = re.sub(r"^\s*el\s+pleno\s+del\s+ayuntamiento\s+ACUERDA[,:]?\s*",
+                         "", self.acuerdo.strip(), flags=re.IGNORECASE)
+        acuerdo = re.sub(r"^(por\s+unanimidad|por\s+mayoría)[,:]?\s*", "", acuerdo,
+                         flags=re.IGNORECASE)
+        if self.parte == "control":
+            # No se pierde: si el texto no lo dice ya, ese cierre pasa al final del punto.
+            if acuerdo and acuerdo.rstrip(".") not in self.texto:
+                self.texto = f"{self.texto.rstrip()}\n\n{acuerdo}"
+            self.acuerdo = None
+        else:
+            self.acuerdo = acuerdo or None
+        return self
 
     @field_validator("votacion", mode="before")
     @classmethod
@@ -84,8 +151,24 @@ class InformePleno(BaseModel):
         "Martínez Martínez del Partido Popular'). Sale de la convocatoria o de la propia "
         "grabación. Lista vacía si la sesión no se convoca a solicitud de concejales."))
     fecha_pleno: str | None = Field(None, description="YYYY-MM-DD solo si se menciona en la grabación; si no, null")
-    hora_inicio: str | None = Field(None, description="HH:MM solo si se dice en la grabación; si no, null")
-    hora_fin: str | None = Field(None, description="HH:MM solo si se dice en la grabación; si no, null")
+    hora_inicio: str | None = Field(None, description=(
+        "Hora de RELOJ a la que se abre la sesión, HH:MM, solo si se dice en la grabación; "
+        "si no, null. Nunca la marca de tiempo [HH:MM:SS] de la transcripción, que cuenta "
+        "desde el inicio del vídeo y no es una hora."))
+    hora_fin: str | None = Field(None, description=(
+        "Hora de RELOJ a la que se levanta la sesión, HH:MM, solo si se dice en la "
+        "grabación; si no, null. Nunca la marca de tiempo de la transcripción: si nadie "
+        "dice la hora al cerrar, este campo va a null y la secretaria lo rellena."))
+
+    @field_validator("fecha_pleno", mode="before")
+    @classmethod
+    def _fecha_iso(cls, v):
+        return normalizar_fecha(v) if isinstance(v, str) else v
+
+    @field_validator("hora_inicio", "hora_fin", mode="before")
+    @classmethod
+    def _hora_de_reloj(cls, v):
+        return normalizar_hora(v) if isinstance(v, str) else v
     presidente: str | None = Field(None, description=(
         "Quien preside la sesión, solo si la grabación lo identifica; si no, null"))
     asistentes: list[str] = Field(description=(
@@ -262,7 +345,11 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
 10. Las intervenciones van DENTRO del texto del punto al que corresponden, en el orden en
     que se producen. No hay una sección separada de intervenciones.
 11. El acuerdo NO se escribe en `texto`: va en el campo `acuerdo`, en un solo párrafo que
-    continúe la fórmula "El Pleno del Ayuntamiento ACUERDA, ". Solo se desglosa en
+    continúe la fórmula "El Pleno del Ayuntamiento ACUERDA, " — SIN escribir esa fórmula
+    dentro del campo y sin repetir la modalidad de la votación: las pone el documento a
+    partir de `acuerdo` y `votacion`. En los puntos de control `acuerdo` va a null; su
+    cierre ("La Corporación se da por informada") es la última frase de `texto`.
+    Solo se desglosa en
     "PRIMERO. ... SEGUNDO. ..." si el Pleno adopta varios acuerdos distintos en el mismo
     punto. Un punto resolutivo que no llega a votarse también puede tener acuerdo ("dejar
     el punto sobre la mesa, con el compromiso de...") si eso es lo que se conviene en la
@@ -271,10 +358,11 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
     cuando así ocurre en la grabación.
 13. Cuando una frase sea textual de un concejal y valga la pena recogerla tal cual,
     entrecomíllala.
-14. PÁRRAFOS. El texto de un punto se parte en párrafos separados por una línea en blanco,
-    uno por bloque de debate —la exposición del proponente, la réplica de la oposición, la
-    respuesta del equipo de gobierno, el cierre—, de tres a seis frases cada uno. Un punto
-    entero en un solo párrafo es un defecto.
+14. PÁRRAFOS. El campo `texto` de un punto SIEMPRE lleva varios párrafos, separados por
+    el escape JSON \\n\\n, uno por bloque de debate —la exposición del proponente, la
+    réplica de la oposición, la respuesta del equipo de gobierno, el cierre—, de tres a
+    seis frases cada uno. Un punto entero en un solo párrafo es un defecto: el acta sale
+    como un muro de texto que nadie puede leer.
 15. CIFRAS, IMPORTES Y DATOS DE TERCEROS. Un acta municipal es un documento público que se
     archiva: una cifra escrita en ella queda como dato oficial del Ayuntamiento aunque en
     la sesión fuera solo un comentario. Por eso:
@@ -309,23 +397,28 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
     por delegación, la exclusión de un punto del orden del día, una ausencia justificada—
     NO es parte del punto 1: va en `declaraciones_apertura`, casi literal. El texto del
     punto 1 empieza en el debate de ese punto.
-19. Español claro y neutro.
+19. FECHAS Y HORAS. `fecha_pleno` va en YYYY-MM-DD, y `hora_inicio` y `hora_fin` en HH:MM
+    de RELOJ, tal como se dicen en la sesión ("siendo las doce horas y dos minutos").
+    Las marcas [HH:MM:SS] de la transcripción cuentan desde el inicio del vídeo y NO son
+    horas: usar la última como `hora_fin` haría constar en el acta que el Pleno se
+    levantó de madrugada. Si nadie dice la hora de cierre, `hora_fin` va a null.
+20. Español claro y neutro.
 
 LA CONVOCATORIA OFICIAL:
 Puede que junto a la transcripción recibas la CONVOCATORIA del pleno: el documento con el
 orden del día que el Ayuntamiento publica ANTES de la sesión, a menudo escaneado. Si la
 recibes, mándate por estas cuatro reglas. Si no, ignóralas.
-20. La convocatoria manda en la FORMA. Los títulos exactos de los puntos, su numeración,
+21. La convocatoria manda en la FORMA. Los títulos exactos de los puntos, su numeración,
     los números de expediente y el tipo de sesión (ordinaria o extraordinaria, y el motivo
     si es extraordinaria) se toman de ella, no de lo que se entienda en el audio. Copia los
     títulos literalmente, en mayúsculas.
-21. La grabación manda en el FONDO. Qué se debate, qué se acuerda, qué se vota y quién
+22. La grabación manda en el FONDO. Qué se debate, qué se acuerda, qué se vota y quién
     interviene sale SOLO de la transcripción. La convocatoria dice lo previsto; el acta
     recoge lo ocurrido, y no siempre coinciden.
-22. Un punto que figura en la convocatoria pero del que la grabación no dice nada NO se
+23. Un punto que figura en la convocatoria pero del que la grabación no dice nada NO se
     redacta como si se hubiera tratado. Si en la grabación se retira, se aplaza o se deja
     sobre la mesa, hazlo constar así; si sencillamente no aparece, omítelo.
-23. Un punto que se trata en la grabación y no está en la convocatoria SÍ va al acta —
+24. Un punto que se trata en la grabación y no está en la convocatoria SÍ va al acta —
     suele ser un asunto de urgencia —, con `numero` en null si no se le da número.
 """
 

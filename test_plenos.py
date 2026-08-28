@@ -102,6 +102,46 @@ try:
 except Exception:
     test("informe incompleto rechazado", "ValidationError", "ValidationError")
 
+# El esquema no se fía de la descripción del campo: normaliza lo que el documento
+# necesita en un formato concreto. La primera ejecución con el pleno de mayo devolvió
+# fecha_pleno="19 de mayo de 2026" y el render reventó tras pagar el bucle entero.
+from plenos_informe import normalizar_fecha, normalizar_hora
+
+test("fecha: ISO se conserva", normalizar_fecha("2026-05-19"), "2026-05-19")
+test("fecha: en prosa se normaliza", normalizar_fecha("19 de mayo de 2026"), "2026-05-19")
+test("fecha: con barras se normaliza", normalizar_fecha("19/5/2026"), "2026-05-19")
+test("fecha: dentro de un título", normalizar_fecha("Pleno ordinario 19-05-2026"), "2026-05-19")
+test("fecha: mes imposible se descarta", normalizar_fecha("19/13/2026"), None)
+test("fecha: sin fecha", normalizar_fecha("Pleno ordinario"), None)
+
+test("hora: HH:MM se conserva", normalizar_hora("12:02"), "12:02")
+test("hora: con coletilla", normalizar_hora("las 12:02 horas"), "12:02")
+test("hora: se rellena a dos dígitos", normalizar_hora("9:05"), "09:05")
+# "02:39:28" era la marca de tiempo de la transcripción, no una hora: el acta habría
+# hecho constar que el Pleno se levantó a las dos y media de la madrugada.
+test("hora: una marca de tiempo no es una hora", normalizar_hora("02:39:28"), None)
+test("hora: hora imposible se descarta", normalizar_hora("25:00"), None)
+
+_mal_formateado = InformePleno.model_validate(dict(
+    INFORME_MINIMO, fecha_pleno="19 de mayo de 2026", hora_fin="02:39:28"))
+test("informe: la fecha en prosa llega normalizada", _mal_formateado.fecha_pleno, "2026-05-19")
+test("informe: la marca de tiempo no pasa como hora de cierre", _mal_formateado.hora_fin, None)
+
+# El modelo devuelve a veces el acuerdo con la fórmula ya escrita, y el acta la decía
+# dos veces; y cuela el cierre de un punto de control donde no hay acuerdo del Pleno.
+_con_formula = PuntoOrdenDia.model_validate(
+    {"numero": 1, "parte": "resolutiva", "titulo": "T", "texto": "x",
+     "acuerdo": "El Pleno del Ayuntamiento ACUERDA, por unanimidad, aprobar la exención.",
+     "votacion": None})
+test("acuerdo: la fórmula duplicada se recorta",
+     _con_formula.acuerdo, "aprobar la exención.")
+_control = PuntoOrdenDia.model_validate(
+    {"numero": 3, "parte": "control", "titulo": "DECRETOS", "texto": "Se da cuenta.",
+     "acuerdo": "La Corporación se da por informada.", "votacion": None})
+test("acuerdo: un punto de control no acuerda nada", _control.acuerdo, None)
+test("acuerdo: su cierre no se pierde, pasa al texto",
+     _control.texto.endswith("La Corporación se da por informada."), True)
+
 auditoria = AuditoriaInforme.model_validate({"problemas": []})
 test("auditoría sin problemas = visto bueno", auditoria.problemas, [])
 
