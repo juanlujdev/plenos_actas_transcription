@@ -347,7 +347,13 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
 11. El acuerdo NO se escribe en `texto`: va en el campo `acuerdo`, en un solo párrafo que
     continúe la fórmula "El Pleno del Ayuntamiento ACUERDA, " — SIN escribir esa fórmula
     dentro del campo y sin repetir la modalidad de la votación: las pone el documento a
-    partir de `acuerdo` y `votacion`. En los puntos de control `acuerdo` va a null; su
+    partir de `acuerdo` y `votacion`.
+    Tampoco se anticipa el resultado dentro de `texto` con una fórmula coloquial: nada de
+    "se da el punto por aprobado", "queda aprobado", "se aprueba por unanimidad" ni
+    equivalentes al cerrar el debate. El documento ya escribe a continuación la fórmula
+    jurídica completa, así que esa frase hace que el acta diga dos veces lo mismo, una de
+    ellas en un registro que no es el suyo. `texto` termina en la última intervención del
+    debate. En los puntos de control `acuerdo` va a null; su
     cierre ("La Corporación se da por informada") es la última frase de `texto`.
     Solo se desglosa en
     "PRIMERO. ... SEGUNDO. ..." si el Pleno adopta varios acuerdos distintos en el mismo
@@ -357,12 +363,20 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
 12. Los puntos de actividad de control terminan con "La Corporación se da por informada."
     cuando así ocurre en la grabación.
 13. Cuando una frase sea textual de un concejal y valga la pena recogerla tal cual,
-    entrecomíllala.
-14. PÁRRAFOS. El campo `texto` de un punto SIEMPRE lleva varios párrafos, separados por
-    el escape JSON \\n\\n, uno por bloque de debate —la exposición del proponente, la
-    réplica de la oposición, la respuesta del equipo de gobierno, el cierre—, de tres a
-    seis frases cada uno. Un punto entero en un solo párrafo es un defecto: el acta sale
-    como un muro de texto que nadie puede leer.
+    entrecomíllala. Usa SIEMPRE comillas tipográficas dobles (“ ”), nunca rectas
+    (" ') ni angulares (« »): es el criterio del acta oficial del Ayuntamiento. Vale
+    igual para los nombres entrecomillados de proyectos, montes o parajes, y tiene que
+    ser el mismo en `texto` y en `acuerdo` — el mismo paraje entrecomillado de dos formas
+    distintas en el mismo punto es un defecto.
+14. PÁRRAFOS. Un punto DEBATIDO lleva en `texto` varios párrafos, separados por el escape
+    JSON \\n\\n, uno por bloque —la exposición del proponente, la réplica de la oposición,
+    la respuesta del equipo de gobierno, el cierre—, de tres a seis frases cada uno:
+    escrito de un tirón sale como un muro de texto que nadie puede leer.
+    Un punto que se despacha en una frase, en cambio, lleva UN solo párrafo y se acaba
+    ahí. Nunca añadas un párrafo para cumplir esta regla: repetir con otras palabras lo
+    que ya dice la frase anterior ("No se presentan escritos" detrás de "La Presidencia
+    informa de que no se han presentado escritos para este punto del orden del día") es
+    mucho peor que un párrafo único, porque el acta se repite a sí misma.
 15. CIFRAS, IMPORTES Y DATOS DE TERCEROS. Un acta municipal es un documento público que se
     archiva: una cifra escrita en ella queda como dato oficial del Ayuntamiento aunque en
     la sesión fuera solo un comentario. Por eso:
@@ -402,7 +416,13 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
     Las marcas [HH:MM:SS] de la transcripción cuentan desde el inicio del vídeo y NO son
     horas: usar la última como `hora_fin` haría constar en el acta que el Pleno se
     levantó de madrugada. Si nadie dice la hora de cierre, `hora_fin` va a null.
-20. Español claro y neutro.
+20. ESPAÑOL CLARO, NEUTRO Y CORRECTO. Cuida las tildes, la concordancia de género y
+    número y el uso de mayúsculas. Los topónimos van en su forma correcta y escritos
+    igual en todo el informe: Enguídanos con tilde, Las Chorreras, El Salto, la Gran Vía
+    — la única excepción son los títulos que se copian literalmente de la convocatoria
+    (regla 21), que se respetan tal como los escribe el Ayuntamiento aunque no lleven
+    tilde. Y no repitas dentro de un mismo punto algo que ya has escrito: si una frase no
+    aporta un dato, una postura o una decisión que no estuviera ya, sobra.
 
 LA CONVOCATORIA OFICIAL:
 Puede que junto a la transcripción recibas la CONVOCATORIA del pleno: el documento con el
@@ -528,7 +548,16 @@ Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
 8. Si recibes la CONVOCATORIA oficial del pleno, sigue mandando en la forma (títulos
    literales, numeración, expedientes, tipo de sesión) mientras la grabación manda en el
    fondo. No añadas contenido a un punto convocado del que la transcripción no habla:
-   eso es justo lo que el auditor señala."""
+   eso es justo lo que el auditor señala.
+9. MISMOS CRITERIOS DE FORMA QUE EL REDACTOR, y no los deshagas al corregir: comillas
+   tipográficas dobles (“ ”) en todo el informe y las mismas en `texto` y en `acuerdo`;
+   ninguna fórmula coloquial de resultado dentro de `texto` ("se da el punto por
+   aprobado", "queda aprobado"), porque el documento compone la fórmula jurídica a partir
+   de `acuerdo` y `votacion` y el acta acabaría diciéndolo dos veces; ninguna frase que
+   repita lo que ya dice otra del mismo punto; y topónimos correctos y uniformes
+   (Enguídanos, Las Chorreras), salvo en los títulos copiados de la convocatoria.
+   Si al corregir otra cosa te encuentras una de estas, arréglala: son de forma, no
+   tocan el fondo de lo que se dijo ni de lo que se acordó."""
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -64,6 +64,7 @@ def fecha_larga(iso: str) -> str:
     return f"{d} de {_MESES_NOMBRE[m]} de {a}"
 
 
+import re
 from pathlib import Path
 
 from plenos_informe import PRESIDENCIA, InformePleno, Votacion
@@ -73,6 +74,14 @@ PLANTILLAS = {"ordinaria": "acta_ordinaria.docx",
               "extraordinaria": "acta_extraordinaria.docx"}
 
 HUECO = "___________"
+
+# Sangría de primera línea de los párrafos de cuerpo (la tabulación del acta real).
+# En EMU, que es la unidad de python-docx; se expresa como un número exacto de twips
+# porque es lo que Word guarda en el XML: un Cm(1,25) se redondearía al twip más
+# cercano y volvería leído como otro número. 709 twips = 1,2503 cm.
+# Es un int y no docx.shared.Cm para no subir el import de docx al módulo, que hoy
+# es perezoso: las funciones de texto se prueban sin python-docx.
+SANGRIA = 709 * 635
 
 # Índices de las anclas dentro de la plantilla. Las dos plantillas son
 # estructuralmente idénticas (9 tablas), así que sirven para ambas.
@@ -96,6 +105,18 @@ _FORMULA_PLANTILLA = ("Una vez verificada por el Secretario la válida constituc
 
 
 # ── composición de textos ─────────────────────────────────────────────────────
+
+def comillas(texto: str) -> str:
+    """Comillas rectas → tipográficas dobles (“ ”), que es lo que usa el acta oficial
+    ("...denominado “LOSILLA, MATALLANA Y OTROS”..."). El modelo tiene la regla en su
+    prompt, pero llegó a escribir "la playeta" en el texto y 'la playeta' en el acuerdo
+    del mismo punto: un criterio tipográfico se garantiza aquí, no pidiéndolo.
+    Solo se tocan los pares; una comilla suelta (un 5" de diámetro, un apóstrofo) se
+    queda como está."""
+    par = lambda m: f"“{m.group(1)}”"
+    texto = re.sub(r'"([^"\n]{1,300})"', par, texto)
+    return re.sub(r"'([^'\n]{1,300})'", par, texto)
+
 
 def _enumerar(elementos: list[str]) -> str:
     """['a', 'b', 'c'] → 'a, b y c'."""
@@ -208,16 +229,21 @@ def formula_cierre(informe: InformePleno) -> str:
             f"como Secretaria – Interventora, doy fe.")
 
 
-def _texto_punto(punto) -> list[str]:
-    """Un punto del orden del día como lista de párrafos. El modelo separa los bloques
-    de debate con una línea en blanco; aquí se convierten en párrafos del documento."""
+def _texto_punto(punto) -> list:
+    """Un punto del orden del día como lista de bloques. El modelo separa los bloques de
+    debate con una línea en blanco; aquí se convierten en párrafos del documento.
+
+    El primero es la tupla (encabezado, resto): el acta oficial escribe el título en
+    negrita DENTRO del primer párrafo del punto —"2º) APROBACIÓN SI PROCEDE DE LOS
+    APROVECHAMIENTOS FORESTALES DEL EJERCICIO 2026.- Dada cuenta por el Sr. Alcalde..."—,
+    no como línea aparte, y ese párrafo es el único del punto que no lleva sangría."""
     numero = f"{punto.numero}º) " if punto.numero is not None else ""
     parrafos = [p.strip() for p in punto.texto.split("\n\n") if p.strip()] or [""]
-    parrafos[0] = f"{numero}{punto.titulo}.- {parrafos[0]}"
+    bloques = [(f"{numero}{punto.titulo}.- ", parrafos[0]), *parrafos[1:]]
     frase = frase_acuerdo(punto)
     if frase:
-        parrafos.append(frase)
-    return parrafos
+        bloques.append(frase)
+    return bloques
 
 
 def _por_orden_del_dia(puntos):
@@ -229,13 +255,38 @@ def _por_orden_del_dia(puntos):
 # ── manipulación del .docx ────────────────────────────────────────────────────
 
 def _escribir(parrafo, texto: str) -> None:
-    """Sustituye el texto conservando el formato del primer run."""
+    """Sustituye el texto conservando el formato del primer run. Único punto por el que
+    pasa todo lo que se escribe en el documento, así que aquí se unifican las comillas."""
+    texto = comillas(texto)
     if parrafo.runs:
         parrafo.runs[0].text = texto
         for run in parrafo.runs[1:]:
             run.text = ""
     else:
         parrafo.add_run(texto)
+
+
+def _cuerpo(parrafo, sangria: bool):
+    """Formato de un párrafo del cuerpo. La alineación se pone a None a propósito: la
+    plantilla trae su párrafo de ejemplo con un `jc` centrado directo y, al reutilizarlo
+    como modelo, el primer punto del orden del día salía centrado. Quitarlo lo deja
+    heredando lo mismo que el resto del documento, que es lo que se pide."""
+    parrafo.paragraph_format.alignment = None
+    parrafo.paragraph_format.first_line_indent = SANGRIA if sangria else 0
+    return parrafo
+
+
+def _escribir_bloque(parrafo, bloque) -> None:
+    """Un bloque es una cadena (párrafo de cuerpo, con sangría) o la tupla
+    (encabezado, resto): el encabezado va en negrita y su párrafo no lleva sangría."""
+    if isinstance(bloque, tuple):
+        cabecera, resto = bloque
+        _escribir(parrafo, cabecera)
+        parrafo.runs[0].bold = True
+        parrafo.add_run(comillas(resto)).bold = False
+    else:
+        _escribir(parrafo, bloque)
+    _cuerpo(parrafo, sangria=not isinstance(bloque, tuple))
 
 
 def _poner_celda(celda, texto: str) -> None:
@@ -245,14 +296,14 @@ def _poner_celda(celda, texto: str) -> None:
         extra._element.getparent().remove(extra._element)
 
 
-def _poner_parrafos(celda, parrafos: list[str]) -> None:
+def _poner_parrafos(celda, bloques: list) -> None:
     """Escribe varios párrafos en una celda, tomando el primero como modelo de estilo."""
     modelo = celda.paragraphs[0]
-    _escribir(modelo, parrafos[0])
+    _escribir_bloque(modelo, bloques[0])
     for extra in celda.paragraphs[1:]:
         extra._element.getparent().remove(extra._element)
-    for texto in parrafos[1:]:
-        celda.add_paragraph(texto, style=modelo.style)
+    for bloque in bloques[1:]:
+        _escribir_bloque(celda.add_paragraph(style=modelo.style), bloque)
 
 
 def _parrafo_con_texto(doc, texto: str):
@@ -305,14 +356,21 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
     apertura = parrafos_apertura(informe)
     hueco = _parrafo_con_texto(doc, HUECO)
     _escribir(hueco, apertura[0])
+    _cuerpo(hueco, sangria=True)
     formula = _parrafo_con_texto(doc, _FORMULA_PLANTILLA)
     for texto in apertura[1:]:
-        formula.insert_paragraph_before(texto, style=hueco.style)
+        _cuerpo(formula.insert_paragraph_before(comillas(texto), style=hueco.style),
+                sangria=True)
     formula._element.getparent().remove(formula._element)
 
     _poner_celda(doc.tables[_T_ENCABEZADO_ORDEN].rows[0].cells[0], "ORDEN DEL DÍA")
     parrafos = [linea for p in _por_orden_del_dia(informe.orden_del_dia)
                 for linea in _texto_punto(p)]
+    if informe.ruegos_y_preguntas:
+        # Mismo tratamiento que un punto del orden del día —mayúsculas, negrita, párrafo
+        # aparte y sin sangría—, que es lo que le falta al acta. Sin numerar: el número
+        # que le dé la convocatoria no lo sabe este módulo, e inventarlo sería un dato.
+        parrafos.append(("RUEGOS Y PREGUNTAS", ""))
     for bloque in informe.ruegos_y_preguntas:
         parrafos.append(f"Ruegos y preguntas formuladas por {bloque.formulados_por}:")
         parrafos.extend(f"- {p}" for p in bloque.puntos)
@@ -323,6 +381,7 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
         tabla.getparent().remove(tabla)
 
     firma = _parrafo_con_texto(doc, "DOCUMENTO FIRMADO ELECTRÓNICAMENTE")
-    firma.insert_paragraph_before(formula_cierre(informe), style=firma.style)
+    _cuerpo(firma.insert_paragraph_before(formula_cierre(informe), style=firma.style),
+            sangria=True)
 
     doc.save(ruta_salida)

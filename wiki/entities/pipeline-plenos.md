@@ -129,6 +129,28 @@ encabezado equivocado en un documento que va a sellarse.
 - **El JSON Schema de pydantic no vale tal cual para el modo `strict` de OpenRouter**, que exige todas las propiedades en `required` y prohíbe `default`. `_esquema_estricto()` lo normaliza antes de enviarlo. No debilita [[via-de-escape-en-el-esquema]]: la vía de escape de los campos opcionales es admitir `null`, no faltar. Cinco tests lo fijan.
 - **La fecha del CLI rellena `fecha_pleno` si el modelo no la oye**, pero nunca pisa una que sí conste en la grabación. No es una invención: `procesar_pleno` la conoce con certeza por `--fecha`, por el título del vídeo o por la entrada guardada.
 - Los recuentos de votos que no constan van a `null` y **no se imprimen**. Llegó a publicarse *"Rechazado (1 a favor, 0 en contra, 0 abstenciones)"* — imposible y fabricado — porque el antiguo render en PDF convertía `null` en `0`, saltándose [[via-de-escape-en-el-esquema]]. El render actual (`plenos_acta.py`) hereda esa lección y tiene tests dedicados.
+- **La forma del acta sale del acta real, no del gusto de nadie.** Extraer las fuentes del
+  PDF del 11 de febrero ([[acta-oficial-11-febrero-2026]]) fijó tres cosas que
+  `plenos_acta.py` reproduce: el título del punto va **en negrita y dentro** del primer
+  párrafo (`2º) TÍTULO.- Dada cuenta por el Sr. Alcalde...`), no como línea aparte; ese
+  párrafo es el único del punto **sin sangría** de primera línea, y todos los demás la
+  llevan; y las comillas son **tipográficas dobles `“ ”`** (`“LOSILLA, MATALLANA Y
+  OTROS”`). Esto último lo garantiza `comillas()` sobre `_escribir` —determinista— porque
+  el modelo llegó a escribir el mismo paraje con comillas dobles en `texto` y simples en
+  `acuerdo` del mismo punto. Ver [[revisor-final-descartado]].
+- **La plantilla contagia su alineación al primer punto.** `_poner_parrafos` reutiliza
+  `celda.paragraphs[0]` como modelo de estilo, y ese párrafo de ejemplo trae un `jc`
+  centrado directo: el primer punto del orden del día salía **centrado hasta el primer
+  punto y aparte**, y solo él, porque `add_paragraph(style=...)` copia el estilo pero no
+  el formato directo. `_cuerpo()` pone la alineación a `None` para que herede lo mismo que
+  el resto del documento.
+- **La sangría se expresa en twips, no en centímetros.** Word la guarda en el XML como
+  twentieths of a point, así que un `Cm(1.25)` se redondea al twip más cercano y vuelve
+  leído como otro número (450.000 → 450.215 EMU). `SANGRIA = 709 * 635` es exacto y
+  sobrevive el viaje de ida y vuelta; un test lo fija.
+- **RUEGOS Y PREGUNTAS se anuncia como un punto más**, en mayúsculas, negrita y párrafo
+  aparte, pero **sin numerar**: el número que le dé la convocatoria no lo conoce el
+  render, e inventarlo sería un dato en un documento que se sella.
 - Los timestamps se guardan en el JSON como rastro de verificación, pero **no se imprimen** en el acta: sirven para auditar contra la grabación, no para el lector.
 - El acta se redacta **en presente de indicativo** con registro y fórmulas de acta municipal ("Toma la palabra...", "El Pleno ACUERDA...", "La Corporación se da por informada"), por ser el estilo real del Ayuntamiento (ver [[2026-08-21-acta-oficial-plenos-design]]).
 - Usar `python -u`: al redirigir la salida a fichero, sin eso Python la almacena en búfer y parece colgado.

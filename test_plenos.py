@@ -551,6 +551,75 @@ except ValueError:
 test("acta: tipo no consta aborta", _sin_tipo, "error")
 
 
+# ── forma del documento: comillas, negrita, alineación y sangría ──────────────
+print("── forma del acta (comillas, negrita, alineación, sangría) ───────────")
+
+from plenos_acta import SANGRIA, comillas
+
+# El criterio tipográfico es el del acta oficial ("...denominado “LOSILLA...”") y se
+# garantiza aquí, no pidiéndoselo al modelo: llegó a escribir el mismo paraje con
+# comillas dobles en `texto` y simples en `acuerdo` del mismo punto.
+test("comillas: las dobles rectas se vuelven tipográficas",
+     comillas('la zona conocida como "la playeta".'), "la zona conocida como “la playeta”.")
+test("comillas: las simples también",
+     comillas("excluir 'la playeta' de las restricciones"),
+     "excluir “la playeta” de las restricciones")
+test("comillas: dos pares en la misma frase",
+     comillas('dijo "sí" y luego "no"'), "dijo “sí” y luego “no”")
+test("comillas: una comilla suelta no se toca", comillas('un tubo de 5" de diámetro'),
+     'un tubo de 5" de diámetro')
+test("comillas: idempotente sobre las ya tipográficas",
+     comillas("como “la playeta”."), "como “la playeta”.")
+
+
+def _parrafos_orden(inf):
+    """Los párrafos reales de la celda del orden del día, con su formato."""
+    ruta = os.path.join(tempfile.gettempdir(), "test_acta_forma.docx")
+    render_acta(inf, ruta)
+    d = _Document(ruta)
+    parrafos = list(d.tables[4].rows[0].cells[0].paragraphs)
+    os.remove(ruta)
+    return parrafos
+
+
+_ps = _parrafos_orden(informe)
+_encabezados = [p for p in _ps if p.text.startswith(("1º)", "2º)", "RUEGOS"))]
+_cuerpo = [p for p in _ps if p not in _encabezados and p.text.strip()]
+
+# La plantilla trae su párrafo de ejemplo centrado y, al reutilizarlo como modelo, el
+# primer punto del orden del día salía centrado hasta el primer punto y aparte.
+test("acta: ningún párrafo del orden del día queda centrado",
+     any(p.paragraph_format.alignment is not None for p in _ps), False)
+
+# El acta oficial pone el título en negrita DENTRO del primer párrafo del punto
+# ("2º) APROBACIÓN...2026.- Dada cuenta por el Sr. Alcalde..."), no como línea aparte.
+_p1 = _ps[0]
+test("acta: el encabezado del punto va en negrita", _p1.runs[0].bold, True)
+test("acta: el encabezado es el título, no el punto entero",
+     _p1.runs[0].text, "1º) APROBACIÓN SI PROCEDE DEL ACTA DE LA SESIÓN ANTERIOR.- ")
+test("acta: el cuerpo que sigue al encabezado no va en negrita", _p1.runs[1].bold, False)
+test("acta: encabezado y cuerpo siguen en el mismo párrafo",
+     _p1.text.startswith("1º) APROBACIÓN SI PROCEDE DEL ACTA DE LA SESIÓN ANTERIOR.- "
+                         "El Sr. Alcalde"), True)
+
+test("acta: los encabezados no llevan sangría",
+     {p.paragraph_format.first_line_indent for p in _encabezados}, {0})
+test("acta: todo párrafo de cuerpo lleva sangría",
+     {p.paragraph_format.first_line_indent for p in _cuerpo}, {SANGRIA})
+
+# Si hay ruegos, la sección se anuncia como un punto más del orden del día. Sin numerar:
+# el número que le dé la convocatoria no lo sabe el render, e inventarlo sería un dato.
+_ruegos = [p for p in _ps if p.text == "RUEGOS Y PREGUNTAS"]
+test("acta: RUEGOS Y PREGUNTAS aparece como encabezado", len(_ruegos), 1)
+test("acta: RUEGOS Y PREGUNTAS en negrita", _ruegos[0].runs[0].bold, True)
+test("acta: RUEGOS Y PREGUNTAS antes de quién los formula",
+     _ps.index(_ruegos[0]) < next(i for i, p in enumerate(_ps)
+                                  if p.text.startswith("Ruegos y preguntas formuladas")),
+     True)
+test("acta: sin ruegos no aparece el encabezado",
+     any(p.text == "RUEGOS Y PREGUNTAS" for p in _parrafos_orden(_sin_ruegos)), False)
+
+
 # ── convocatoria ──────────────────────────────────────────────────────────────
 print("── convocatoria (orden del día) ──────────────────────────────────────")
 

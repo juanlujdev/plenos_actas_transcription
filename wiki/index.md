@@ -57,6 +57,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[convocatoria-como-fuente]] | El orden del día oficial como segunda fuente: manda en la forma, la grabación manda en el fondo | 2026-08-22 |
 | [[diarizacion-como-andamiaje]] | La etiqueta de locutor es una voz, no una identidad: cuándo puede propagarse a toda la sesión y qué riesgo trae | 2026-08-22 |
 | [[persistir-lo-caro-antes-de-lo-fragil]] | Lo que cuesta dinero se escribe en disco antes de llamar a lo que puede fallar | 2026-08-22 |
+| [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
 
 ## Síntesis
 
