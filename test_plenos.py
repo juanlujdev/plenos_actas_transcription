@@ -1894,8 +1894,9 @@ finally:
 
 
 # ── asistente: aviso de duración ──────────────────────────────────────────────
-test("se avisa de que tarda unos 20 minutos",
-     "20 minutos" in _ap.AVISO_DURACION.lower(), True)
+test("se avisa de cuánto puede tardar, y de que depende del pleno",
+     "hasta una hora" in _ap.AVISO_DURACION.lower()
+     and "dure el pleno" in _ap.AVISO_DURACION.lower(), True)
 test("se avisa de que un mensaje de lentitud no detiene nada",
      "NO cierres" in _ap.AVISO_DURACION, True)
 
@@ -2628,6 +2629,41 @@ try:
          len(list(_carpeta_reh.glob(f"{_fecha_reh}-guia-de-verificacion-*.html"))), 1)
 finally:
     _pp.BORRADOR_DIR = _bd_reh
+
+
+# ── asuntos fuera del orden del día (regla 16 ter) ────────────────────────────
+# Van solo a la guía, nunca al acta: la secretaria decide si los recoge y dónde.
+_informe_asuntos = InformePleno.model_validate(dict(
+    INFORME_MINIMO,
+    orden_del_dia=[
+        {"numero": 1, "parte": "resolutiva", "timestamp": "00:10:00",
+         "titulo": "APROBACIÓN DEL ACTA ANTERIOR", "texto": "x", "acuerdo": None,
+         "votacion": None},
+    ],
+    asuntos_no_convocados=[
+        {"asunto": "El Sr. Pons plantea el estado del camino de Las Chorreras.",
+         "surge_en": "APROBACIÓN DEL ACTA ANTERIOR", "timestamp": "00:15:30"},
+    ]))
+
+_tmp_asuntos = os.path.join(tempfile.gettempdir(), "test_guia_asuntos.html")
+render_guia(_informe_asuntos, _entrada_guia, _TRANS_GUIA, [], _tmp_asuntos)
+_html_asuntos = Path(_tmp_asuntos).read_text(encoding="utf-8")
+os.remove(_tmp_asuntos)
+
+test("asuntos fuera del orden del día: la guía los pinta",
+     "camino de Las Chorreras" in _html_asuntos, True)
+test("asuntos fuera del orden del día: dicen en qué punto surgen",
+     "En el debate de: APROBACIÓN DEL ACTA ANTERIOR" in _html_asuntos, True)
+test("asuntos fuera del orden del día: llevan enlace al minuto",
+     "?t=930" in _html_asuntos, True)
+test("asuntos fuera del orden del día: la guía avisa de que NO están en el acta",
+     "no está en ella" in _html_asuntos, True)
+test("asuntos fuera del orden del día: sin ninguno, la sección no aparece",
+     "Asuntos tratados fuera del orden del día" in _html_guia, False)
+
+# El campo tiene default: un informe.json viejo (--rehacer-acta) sigue cargando.
+test("asuntos fuera del orden del día: campo opcional, informes viejos siguen validando",
+     InformePleno.model_validate(INFORME_MINIMO).asuntos_no_convocados, [])
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────

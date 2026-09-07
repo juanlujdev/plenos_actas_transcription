@@ -701,6 +701,15 @@ section.mapa-voces h2 { color: #1a4fa0; }
   background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 3px;
   user-select: all;
 }
+section.asuntos {
+  background: #eef6ec; border: 1px solid #b3d3ac; border-radius: 6px;
+  padding: 8px 20px 16px; margin-bottom: 32px;
+}
+section.asuntos h2 { color: #2c6e2c; }
+.asunto { border-top: 1px solid #cfe3ca; padding: 12px 0; }
+.asunto:first-of-type { border-top: none; }
+.asunto p { margin: 4px 0; }
+.asunto-donde { font-weight: bold; }
 .punto { border-top: 1px solid #ddd; padding: 16px 0; }
 .punto h3 { margin: 0 0 6px; }
 .punto p { margin: 4px 0; }
@@ -728,6 +737,9 @@ section.mapa-voces h2 { color: #1a4fa0; }
   .voz-alerta .voz-aviso { color: #ff8a80; }
   .voz-aviso-leve { background: #3a2f00; }
   .voz-aviso-leve .voz-aviso { color: #e0c46a; }
+  section.asuntos { background: #16301a; border-color: #3a6b3a; }
+  section.asuntos h2 { color: #9fd89f; }
+  .asunto { border-color: #2c5230; }
   .punto { border-color: #444; }
   .enlace { background: #4a90d9; }
   .tiempo { color: #aaa; }
@@ -785,6 +797,20 @@ def _bloque_objecion(o: dict, video_url: str | None) -> str:
       {buscar}
       <p><strong>Por qué se duda:</strong> {html.escape(o["motivo"])}</p>
       {se_oye}
+      {f'<p>{tiempo}</p>' if tiempo else ""}
+    </li>"""
+
+
+def _bloque_asunto(asunto, video_url: str | None) -> str:
+    """Un tema tratado fuera del orden del día. No lleva ni acuerdo ni votación —si los
+    tuviera sería un punto del acta (regla 16 ter)—: solo la síntesis, dónde surge y el
+    minuto para oírlo."""
+    donde = (f'<p class="asunto-donde">En el debate de: {html.escape(asunto.surge_en)}</p>'
+             if asunto.surge_en else "")
+    tiempo = _html_tiempo(asunto.timestamp, video_url)
+    return f"""    <li class="asunto">
+      {donde}
+      <p>{html.escape(asunto.asunto)}</p>
       {f'<p>{tiempo}</p>' if tiempo else ""}
     </li>"""
 
@@ -942,6 +968,22 @@ def render_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
     </ul>
   </section>"""
 
+    # Informes generados antes de que el campo existiera (--rehacer-acta sobre un
+    # informe.json viejo) no lo traen: se omite la sección en vez de reventar.
+    asuntos = getattr(informe, "asuntos_no_convocados", None) or []
+    bloque_asuntos = ""
+    if asuntos:
+        items = "\n".join(_bloque_asunto(a, video_url) for a in asuntos)
+        bloque_asuntos = f"""  <section class="asuntos">
+    <h2>Asuntos tratados fuera del orden del día</h2>
+    <p>El acta recoge los puntos convocados, así que esto <strong>no está en ella</strong>.
+       Aquí tienes de qué más se habló y en qué minuto, por si quieres recogerlo dentro del
+       punto en el que surge.</p>
+    <ul>
+{items}
+    </ul>
+  </section>"""
+
     puntos_ordenados = sorted(informe.orden_del_dia,
                               key=lambda p: (p.numero is None, p.numero or 0))
     bloque_puntos = "\n".join(_bloque_punto(p, video_url) for p in puntos_ordenados)
@@ -964,6 +1006,7 @@ def render_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
   <p class="fecha">{html.escape(fecha_txt)}</p>
 {bloque_mapa}
 {bloque_objeciones}
+{bloque_asuntos}
   <section class="orden-del-dia">
     <h2>Orden del día</h2>
 {bloque_puntos}

@@ -469,7 +469,7 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
 # ── flujo 1: crear el acta de un pleno nuevo ──────────────────────────────────
 
 AVISO_DURACION = """
-   ESTO VA A TARDAR UNOS 20 MINUTOS.
+   ESTO PUEDE TARDAR HASTA UNA HORA, SEGÚN LO QUE DURE EL PLENO.
 
    Puedes dejar el ordenador trabajando y volver más tarde, pero
    NO cierres esta ventana: si la cierras, se para todo.
@@ -520,7 +520,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         consola.decir("\n   Ya hay un pleno guardado con esa fecha.")
         opcion = preguntar_opcion(consola, [
             "Volver a generar solo el documento  (rápido, no vuelve a transcribir)",
-            "Empezar de cero y sustituirlo       (tarda 20 minutos)",
+            "Empezar de cero y sustituirlo       (hasta 1 hora, según lo que dure el pleno)",
             "Cancelar y volver al menú",
         ])
         if opcion == 1:
@@ -568,7 +568,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         consola.anotar(traceback.format_exc())
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el acta.")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
-        consola.decir("   del menú vuelve a intentarlo sin repetir los 20 minutos.")
+        consola.decir("   del menú vuelve a intentarlo sin repetir la transcripción.")
         consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
         consola.decir(f"   {consola.ruta_log}")
     finally:
@@ -629,7 +629,7 @@ def rehacer_pleno(inst: Instalacion, pantalla, fecha: str) -> None:
         consola.anotar(traceback.format_exc())
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el documento.")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
-        consola.decir("   del menú vuelve a intentarlo sin repetir los 20 minutos.")
+        consola.decir("   del menú vuelve a intentarlo sin repetir la transcripción.")
         consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
         consola.decir(f"   {consola.ruta_log}")
     finally:

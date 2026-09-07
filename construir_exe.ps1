@@ -51,5 +51,21 @@ if (-not (Test-Path $yt)) {
                       -OutFile $yt
 }
 
+# La carpeta de pruebas del Escritorio es OTRA copia: si solo se reconstruye aquí, se
+# prueba el .exe viejo y el feedback describe una versión que ya no existe. Se copia solo
+# el .exe — la configuración y las actas generadas de esa carpeta no se tocan.
+$escritorio = Join-Path ([Environment]::GetFolderPath("Desktop")) "Actas de Plenos del Ayuntamiento"
+if (Test-Path $escritorio) {
+    try {
+        Copy-Item (Join-Path $destino "Generar acta de un pleno.exe") $escritorio -Force
+        Write-Host "Copiado tambien a: $escritorio"
+    } catch {
+        Write-Host ""
+        Write-Host "AVISO: no se pudo copiar al Escritorio (la app esta abierta)."
+        Write-Host "       Cierrala y vuelve a lanzar este script, o copia a mano desde:"
+        Write-Host "       $destino"
+    }
+}
+
 Write-Host ""
 Write-Host "Listo: $destino"

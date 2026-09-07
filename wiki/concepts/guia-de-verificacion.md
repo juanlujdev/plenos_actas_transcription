@@ -103,6 +103,27 @@ que solo se vieron al probar contra el pleno real:
   citas salían cortadas por la mitad ("Teniente de Alcalde, Dª Lorena Luján Chujfi" sin "La
   Sra." delante).
 
+## Lo que no cabe en el acta pero sí en la guía
+
+La secretaria pidió poder recoger los temas paralelos que salen en el debate, y a la vez
+dijo que no hacía falta que la IA los añadiera al acta. Las dos cosas a la vez solo son
+posibles si el pipeline se los enseña **sin escribirlos en el documento que se sella**:
+
+- En el acta no caben porque un acta numera lo convocado, y un epígrafe inventado para
+  ellos sería una invención con pinta de oficial — el mismo riesgo de
+  [[convocatoria-como-fuente]] leído al revés.
+- Pero si se podan en silencio, ella no puede sintetizarlos: tendría que buscarlos en tres
+  horas y media de vídeo, que es justo el trabajo que dijo que no puede hacer.
+
+De ahí `asuntos_no_convocados` (regla 16 ter del generador): una síntesis de una o dos
+frases por tema, el punto en cuyo debate surge y su timestamp. La guía los pinta en su
+propia sección, cada uno con su minuto enlazado, encabezada por el aviso de que **no están
+en el acta**. `plenos_acta.py` no lee ese campo, así que el `.docx` no puede cambiar por
+esto ni aunque el modelo se ponga generoso.
+
+Es la misma división de trabajo que el resto de la guía: el pipeline localiza, la persona
+decide.
+
 ## Los tres ficheros tienen que contar lo mismo
 
 Cada pleno produce tres documentos que hablan del mismo contenido: el acta `.docx`, la guía

@@ -168,3 +168,20 @@ para decir "no consta" y el modelo las intercambia), `wiki/concepts/bucle-genera
 (sección nueva: cuando lo que oscila es una regla de derecho y no un dato),
 `wiki/entities/pipeline-plenos.md` (fallo conocido nuevo con los cuatro arreglos pendientes y
 su acoplamiento) y `wiki/index.md`.
+
+## [2026-09-07] cambio | Observaciones que piden constar, y los asuntos fuera del orden del día
+
+Respuesta de la secretaria del Ayuntamiento sobre el borrador del pleno de septiembre: revisa
+ella el acta, no necesita que la IA añada los puntos fuera del orden del día (los sintetiza a
+mano si importan), y añade a mano las observaciones que los concejales piden que consten.
+
+Dos cambios en `scripts/plenos_informe.py` y uno en `scripts/plenos_guia.py`: la **regla 16
+bis** exceptúa de la poda de la regla 16 lo que un interviniente pide expresamente que conste
+(una o dos frases, atribuidas); la **regla 16 ter** y el campo `asuntos_no_convocados` recogen
+los temas paralelos **fuera del acta**, y solo la guía HTML los pinta con su minuto enlazado.
+El auditor recibe el aviso de que ese campo no es parte del acta, para que no queme vueltas
+reclamando que se redacten.
+
+Actualizadas `wiki/entities/pipeline-plenos.md` (dos gotchas) y
+`wiki/concepts/guia-de-verificacion.md` (sección nueva: lo que no cabe en el acta pero sí en
+la guía).

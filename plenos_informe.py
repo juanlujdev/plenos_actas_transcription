@@ -174,6 +174,21 @@ class BloqueRuegos(BaseModel):
     puntos: list[str] = Field(description="Un elemento por ruego o pregunta")
 
 
+class AsuntoNoConvocado(BaseModel):
+    """Un tema tratado en el debate que no figura en el orden del día. NO se escribe en el
+    acta —el acta numera lo convocado y lo que se trata como punto propio—: va solo a la
+    guía de verificación, para que la secretaria vea de qué se habló y en qué minuto y
+    decida ella si lo sintetiza y dónde (ver regla 16 ter)."""
+    asunto: str = Field(description=(
+        "Qué se trata, sintetizado en una o dos frases y atribuido a quien lo plantea. "
+        "Una síntesis, no el debate."))
+    surge_en: str | None = Field(None, description=(
+        "Título del punto del orden del día en cuyo debate surge, escrito igual que en "
+        "`orden_del_dia`; null si no surge dentro de ningún punto."))
+    timestamp: str | None = Field(None, description=(
+        "HH:MM:SS de la transcripción donde se trata este asunto"))
+
+
 class InformePleno(BaseModel):
     """Contenido del acta de un pleno. Lo devuelven el generador y el corrector."""
     tipo_sesion: Literal["ordinaria", "extraordinaria", "no consta"] = Field(description=(
@@ -246,6 +261,10 @@ class InformePleno(BaseModel):
         "informes generados antes de que este campo existiera."))
     orden_del_dia: list[PuntoOrdenDia]
     ruegos_y_preguntas: list[BloqueRuegos] = Field(description="Lista vacía si no hubo turno")
+    asuntos_no_convocados: list[AsuntoNoConvocado] = Field(default_factory=list, description=(
+        "Los temas tratados en la sesión que NO son del orden del día ni se someten a "
+        "acuerdo: los asuntos paralelos que salen dentro del debate de un punto (regla 16 "
+        "ter). No se imprimen en el acta. Lista vacía si no hay ninguno."))
     resumen_corto: str = Field(description="2-3 frases para la tarjeta de la web")
 
 
@@ -544,6 +563,24 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
     frase ("El debate se vuelve tenso, con acusaciones de mala gestión por parte de la
     oposición y defensas del trabajo realizado por parte del equipo de Gobierno"), no
     transcribe los reproches uno a uno.
+16 bis. LO QUE UN CONCEJAL PIDE QUE CONSTE. La regla 16 poda el tira y afloja, pero no
+    puede podar una observación que el interviniente pide expresamente que conste en acta
+    ("que conste en acta", "que quede reflejado", "quiero que se recoja"), ni la reserva,
+    la discrepancia o la advertencia con la que sostiene su postura sobre el asunto que se
+    trata. Esas van al `texto` del punto, en el sitio donde se producen, atribuidas a quien
+    las hace y en UNA o DOS frases, redactadas en el registro del acta: se recoge lo que
+    afirma, no cómo lo dice ni cuántas veces lo repite. Si se explica de forma tan confusa
+    que no se entiende qué afirma, se omite (regla 6) — nunca se interpreta lo que quiso
+    decir. Y sigue fuera del acta lo que no es una observación: el reproche personal, la
+    insistencia y la anécdota que no aportan ni postura ni dato.
+16 ter. LOS ASUNTOS QUE NO ESTÁN EN EL ORDEN DEL DÍA. En estos plenos es habitual que
+    dentro del debate de un punto se acaben tratando temas paralelos. Esos temas NO se
+    redactan en el acta: van a `asuntos_no_convocados`, uno por tema, sintetizado en una o
+    dos frases con quién lo plantea, el título del punto en cuyo debate surge y su
+    timestamp. Solo los que importan para el asunto que se está tratando o para el
+    Ayuntamiento; el comentario de pasada no es un asunto. No confundir con la regla 24: lo
+    que se trata como punto propio y se somete a acuerdo o a votación es un punto del orden
+    del día aunque no estuviera convocado, y va en `orden_del_dia`, no aquí.
 17. No cites marcas de tiempo dentro de los textos redactados, ni escribas recuentos de
     votos en el texto: los recuentos van en el campo `votacion` y el documento compone la
     frase a partir de ahí.
@@ -671,6 +708,13 @@ terceros que no constan en ningún documento. Una cifra que está en la transcri
 en el informe NO es un problema: es la depuración esperada. Tu trabajo es el sentido
 contrario — datos que el informe afirma y la transcripción no respalda —, nunca reclamar
 que se añada lo que se omitió.
+
+`asuntos_no_convocados` es una lista de trabajo para la secretaria, no parte del acta: son
+los temas paralelos que salieron en el debate y que el redactor tiene instrucciones de NO
+redactar como puntos. Que un asunto figure ahí y no en `orden_del_dia` es lo correcto —
+solo objétalo si ese asunto se sometió de verdad a acuerdo o a votación en la grabación,
+porque entonces es un punto y el acta lo está dejando fuera. Su contenido se audita como
+todo lo demás: que la transcripción respalde lo que dice.
 
 Comprueba también que cada punto está en la parte correcta: 'resolutiva' si se somete a
 acuerdo del Pleno, 'control' si es un decreto de alcaldía o una dación de cuenta de la que
