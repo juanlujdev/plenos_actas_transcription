@@ -9,6 +9,7 @@ para que el esquema nunca fuerce al modelo a inventar.
 """
 
 import re
+import unicodedata
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -56,6 +57,21 @@ def normalizar_hora(texto: str) -> str | None:
     return f"{h:02d}:{minutos:02d}" if h <= 23 and minutos <= 59 else None
 
 
+# Fórmulas de escape que el modelo escribe cuando algo no consta. En los campos que las
+# admiten (el mapa de voces, quién formula un ruego) son prosa legítima que el acta
+# imprime; en los que piden null son una cadena no vacía que se cuela en el documento
+# como si fuera un nombre. Ver _presidente_o_nada.
+_SIN_IDENTIFICAR = {"no identificado en la grabacion", "no identificada en la grabacion",
+                    "no consta"}
+
+
+def _normalizar_es(texto: str) -> str:
+    """Minúsculas, sin acentos, sin puntuación de cierre ni espacios sobrantes."""
+    sin_tildes = unicodedata.normalize("NFKD", texto.strip().lower())
+    sin_tildes = "".join(c for c in sin_tildes if not unicodedata.combining(c))
+    return sin_tildes.strip(" .,;:")
+
+
 class Votacion(BaseModel):
     """Resultado de la votación de un punto. Solo datos oídos en la grabación."""
     resultado: Literal["aprobado", "rechazado", "sin votación", "no consta"]
@@ -71,6 +87,7 @@ class Votacion(BaseModel):
 
 class PuntoOrdenDia(BaseModel):
     numero: int | None = Field(None, description="Número del punto si se menciona; si no, null")
+    timestamp: str | None = Field(None, description="HH:MM:SS de la transcripción donde empieza el debate de este punto")
     parte: Literal["resolutiva", "control"] = Field(description=(
         "'resolutiva' si el punto se somete a acuerdo del Pleno; 'control' para decretos "
         "de alcaldía, daciones de cuenta y todo aquello de lo que la Corporación solo se "
@@ -129,6 +146,26 @@ class PuntoOrdenDia(BaseModel):
         return v
 
 
+class VozIdentificada(BaseModel):
+    """Una entrada del mapa de voces: qué persona hay detrás de una etiqueta de
+    locutor, y la prueba que lo demuestra. Antes esa deducción vivía solo en la cabeza
+    del modelo mientras redactaba, sin dejar rastro que el auditor —o la funcionaria—
+    pudiera revisar; es la razón de ser de este modelo (ver DIARIZACION)."""
+    etiqueta: str = Field(description="La etiqueta tal como aparece en la transcripción: 'A', 'B'...")
+    persona: str = Field(description=(
+        "Nombre oficial completo de la corporación, con tratamiento; la condición con la "
+        "que se presenta un vecino asistente que no es de la corporación (nunca su nombre "
+        "y apellidos); 'etiqueta con voces mezcladas' si la propia etiqueta afirma "
+        "identidades incompatibles entre sí (ver DIARIZACION); o exactamente 'no "
+        "identificado en la grabación' si la etiqueta no llega a identificarse."))
+    evidencia: str = Field(description=(
+        "Cita LITERAL de la transcripción que demuestra la identificación —o la "
+        "exclusión: la frase donde esta voz nombra a otra persona también cuenta, "
+        "porque descarta que sean la misma—. Sin una cita que lo sostenga, `persona` "
+        "va a 'no identificado en la grabación'."))
+    timestamp: str | None = Field(None, description="HH:MM:SS de la transcripción donde está esa cita")
+
+
 class BloqueRuegos(BaseModel):
     """El acta agrupa los ruegos y preguntas por quien los formula."""
     formulados_por: str = Field(description=(
@@ -171,6 +208,20 @@ class InformePleno(BaseModel):
         return normalizar_hora(v) if isinstance(v, str) else v
     presidente: str | None = Field(None, description=(
         "Quien preside la sesión, solo si la grabación lo identifica; si no, null"))
+
+    @field_validator("presidente", mode="before")
+    @classmethod
+    def _presidente_o_nada(cls, v):
+        """El campo pide null cuando no se identifica a quien preside, pero el modelo
+        devuelve la fórmula de escape que sí usan otros campos ("no identificado en la
+        grabación"). Como es una cadena no vacía, `informe.presidente or HUECO` la da por
+        buena y el acta del 2026-09-03 cerró con "...cumpliendo con el objeto del acto, no
+        identificado en la grabación levanta la sesión...", además de poner esa frase en la
+        celda "Presidida por". Normalizar aquí arregla los dos sitios a la vez y deja el
+        hueco que la secretaria rellena, que es lo que el campo quería decir."""
+        if isinstance(v, str) and _normalizar_es(v) in _SIN_IDENTIFICAR:
+            return None
+        return v
     asistentes: list[str] = Field(description=(
         "Miembros de la corporación cuya asistencia consta en la grabación (pase de lista "
         "o identificación explícita), con tratamiento y nombre completo tal como se escriben "
@@ -187,6 +238,12 @@ class InformePleno(BaseModel):
         "declaración, en el orden en que se pronuncian, recogidas casi literalmente y "
         "corregido solo lo que sean errores evidentes de transcripción. Lista vacía si la "
         "sesión se abre sin ninguna declaración de este tipo."))
+    identificacion_locutores: list[VozIdentificada] = Field(default_factory=list, description=(
+        "El mapa de voces: una entrada por cada etiqueta de locutor que aparezca en la "
+        "transcripción, rellenada ANTES de redactar el resto del informe (ver "
+        "DIARIZACION). Solo se puede escribir un nombre en el acta si su etiqueta está "
+        "identificada aquí, con la cita que lo demuestra. Lista vacía únicamente en "
+        "informes generados antes de que este campo existiera."))
     orden_del_dia: list[PuntoOrdenDia]
     ruegos_y_preguntas: list[BloqueRuegos] = Field(description="Lista vacía si no hubo turno")
     resumen_corto: str = Field(description="2-3 frases para la tarjeta de la web")
@@ -251,6 +308,32 @@ acertar el tratamiento —ver regla 8—):
   la Corporación y no vota: da fe de la sesión, lee acuerdos e informa cuando se le pide.
   Su voz sale en la grabación, pero nunca va en `asistentes` ni en `ausentes`.
 
+APODOS: un apodo que se oiga en la grabación (como "Chari" arriba) sirve para
+reconocer de quién se habla — también para el mapa de voces de DIARIZACION —, pero
+nunca para escribirlo en el acta: el documento usa siempre el nombre oficial completo
+con su tratamiento, aunque en toda la sesión no se la llame de otra forma. Vale como
+regla general, no solo para ese caso.
+
+PÚBLICO ASISTENTE: a las sesiones asiste público, y algunos vecinos intervienen,
+sobre todo en el turno de ruegos y preguntas. Cambian de un pleno a otro y NO están
+en ningún listado: no se les puede identificar "por descarte" contra la Corporación,
+por mucho que una etiqueta de locutor no encaje con ninguno de los nombres de arriba.
+- NO son miembros de la Corporación: no votan, no se cuentan en ningún recuento (ver
+  RECUENTOS DE VOTOS), y nunca van en `asistentes` ni en `ausentes` — esas dos listas
+  son solo de la Corporación.
+- Se les nombra por el CARGO o la condición con la que se presentan ("la presidenta
+  de la Asociación de Jubilados", "un representante de la asociación de vecinos"); si
+  no se identifican así, "un vecino asistente" o "una vecina asistente", según se
+  aprecie. NUNCA con nombre y apellidos, aunque se digan en la grabación: el acta es
+  un documento público, y el nombre de un particular no se recoge si basta con su
+  condición para identificar la intervención.
+- Una voz que el mapa de DIARIZACION deja como "no identificado en la grabación"
+  puede perfectamente ser público, no necesariamente un concejal de los que faltan
+  por identificar: tratar el listado de la Corporación como si fuera la lista
+  completa de quien puede hablar en la sesión es exactamente el error que dio pie a
+  esta regla — atribuirle a una concejala con nombre y apellidos lo que dijo una
+  vecina asistente.
+
 Ese listado da el CARGO y el TRATAMIENTO, que son datos oficiales y no dependen de la
 grabación. Lo que sigue exigiendo que la grabación lo diga es QUIÉN HABLA y QUÉ DICE:
 el listado nunca sirve para rellenar el campo `presidente` ni para atribuir
@@ -261,14 +344,69 @@ DIARIZACION = """ETIQUETAS DE LOCUTOR:
 La transcripción viene diarizada: cada línea es [HH:MM:SS] seguido de "Interviniente A:",
 "Interviniente B:"... Esas etiquetas las pone el transcriptor separando VOCES, no
 identidades: sabe que dos intervenciones son de la misma persona, no de quién son.
-- La misma etiqueta es la misma persona durante toda la sesión.
-- Si en cualquier momento la grabación identifica a quien lleva una etiqueta (se
-  presenta, la Presidencia le da la palabra por su nombre o su cargo, alguien le
-  responde nombrándole), atribúyele TODAS las intervenciones de esa etiqueta, también
-  las anteriores. Una sola identificación vale para toda la sesión.
+
+PRIMERO EL MAPA, DESPUÉS EL ACTA: antes de redactar nada, rellena
+`identificacion_locutores` con una entrada por cada etiqueta que aparezca en la
+transcripción. Solo puedes escribir un nombre en el acta si esa etiqueta está
+identificada en el mapa, con su cita como prueba; si no lo está, la atribución es "no
+identificado en la grabación" aunque te parezca evidente por el contexto.
+
+- La misma etiqueta es la misma persona durante toda la sesión — SALVO que el
+  transcriptor haya fusionado dos voces parecidas bajo una sola etiqueta. La señal de
+  esa fusión es que la etiqueta acabe afirmando identidades INCOMPATIBLES entre sí: en
+  el caso real que motivó esta regla, la etiqueta que abre la sesión presidiendo dice,
+  tres horas después, "llevo como presidenta de la asociación de jubilados" — nadie es
+  las dos cosas.
+- Cuando una etiqueta se contradiga así, NO elijas entre las dos identidades: la
+  contradicción es la prueba de que la etiqueta está contaminada, no una pista de cuál
+  de las dos es la buena. Márcala en el mapa como "etiqueta con voces mezcladas"
+  (`persona` puede llevar ese valor) y atribuye sus intervenciones a "no identificado en
+  la grabación", salvo aquellas que se identifiquen a sí mismas.
+- Y al revés: una intervención que se identifica a sí misma manda sobre lo que diga su
+  etiqueta, aunque esa etiqueta esté asociada a otra persona en el mapa. Si dentro de una
+  etiqueta contaminada alguien dice "llevo como presidenta de la asociación de
+  jubilados", esa intervención es de ella, aunque la misma etiqueta la lleve también
+  quien preside.
+- REGLA DE TURNOS ALTERNOS: dos etiquetas que se ALTERNAN hablando dentro de una misma
+  conversación —se responden, se interrumpen, intervienen seguidas en el mismo
+  intercambio— son PERSONAS DISTINTAS, y por tanto no pueden identificarse en el mapa
+  como la misma persona. Si el mapa acaba asignando la misma persona a dos etiquetas que
+  se alternan así, una de las dos identificaciones es falsa: márcalo como conflicto y
+  manda las dos a "no identificado en la grabación", salvo que una de las dos pruebas sea
+  claramente más fuerte según la JERARQUÍA DE PRUEBAS de más abajo, en cuyo caso esa
+  prevalece y la otra etiqueta se queda sin identificar. Y al contrario: si dos etiquetas
+  NUNCA se alternan entre sí, sí pueden ser la misma persona partida en dos voces por el
+  transcriptor —eso es benigno—, así que no marques conflicto solo porque dos etiquetas
+  compartan persona en el mapa.
+- Si en cualquier momento la grabación identifica a quien lleva una etiqueta —se
+  presenta, alguien la nombra mientras habla o respondiéndole directamente, o se dirige
+  a ella por su nombre o su cargo de forma inequívoca—, atribúyele TODAS las
+  intervenciones de esa etiqueta, también las anteriores. Una sola identificación vale
+  para toda la sesión.
+- Que la Presidencia dé la palabra a alguien POR SU NOMBRE no identifica la voz que
+  habla a continuación: la palabra puede acabar tomándola otra persona, o intercalarse
+  otras voces antes de que responda quien fue nombrado. Es una expectativa de quién va
+  a hablar, no una identificación de quién habló.
+- REGLA DE EXCLUSIÓN: si una etiqueta llama a alguien por su nombre, esa etiqueta NO es
+  esa persona. Descartar así es tan valioso como identificar: si la etiqueta B le dice
+  "esto ocurrió, Joaquín", la etiqueta B no puede ser Joaquín, aunque la Presidencia le
+  hubiera dado la palabra a él momentos antes.
 - Si una etiqueta no se identifica nunca, sus intervenciones siguen siendo "no
   identificado en la grabación". No adivines por el orden de palabra, por el tema del
   que habla, por cuánto habla ni por el reparto de la corporación.
+- JERARQUÍA DE PRUEBAS: no todas las identificaciones valen lo mismo. De más fuerte a
+  más débil: (1) la persona SE IDENTIFICA A SÍ MISMA ("soy concejal del Ayuntamiento",
+  "llevo como presidenta de la asociación de jubilados"); (2) alguien la NOMBRA
+  RESPONDIÉNDOLE directamente o mientras ella habla; (3) alguien SE DIRIGE A ELLA por su
+  nombre o su cargo de forma inequívoca. Si en algún momento aparece una prueba más
+  fuerte que contradiga a una más débil que ya tenías anotada, gana la prueba fuerte, NO
+  la que llegó primero: una sola identificación vale para toda la sesión, pero no
+  cualquier identificación vale igual. La `evidencia` que quede en el mapa es la de la
+  prueba que has aceptado, no la de la primera que encontraste.
+- La evidencia de cada entrada del mapa es una CITA LITERAL de la transcripción, nunca
+  un resumen de lo que crees que pasó. Si no hay una cita que lo demuestre, esa etiqueta
+  va como "no identificado en la grabación": un acta que dice que no consta es preferible
+  a un acta que atribuye mal una intervención.
 - Las etiquetas no se escriben en el acta: son andamiaje de la transcripción."""
 
 
@@ -314,6 +452,9 @@ REGLAS INNEGOCIABLES:
 3. Cada votación debe llevar el timestamp donde se anuncia su resultado, y sus números
    se rigen por el bloque RECUENTOS DE VOTOS de arriba. Si se aprueba "por unanimidad"
    sin contar, modalidad="unanimidad" y los números en null.
+3 bis. Cada punto del orden del día debe llevar en `timestamp` el momento de la
+   transcripción en que arranca su debate — mismo formato que el de la votación, pero
+   referido al inicio del punto, no a su resultado.
 4. La transcripción es automática y deforma los nombres propios. Cuando aparezca un
    nombre que se corresponda claramente por sonido con uno de la corporación (p. ej.
    "Féceres Zuela" → "Sergio de Fez Cerezuela"; "Zatanochoa" → "Mario Cerdán Ochoa"),
@@ -469,6 +610,42 @@ comprobando no repita el nombre. Lo que sí debes señalar es que ponga nombre a
 etiqueta que la grabación no identifica en ningún momento, o que mezcle en una misma
 persona intervenciones de etiquetas distintas.
 
+REVISA EL MAPA DE VOCES (`identificacion_locutores`) como parte de tu trabajo, y
+hazlo antes que las atribuciones sueltas: por cada entrada, comprueba que su
+`evidencia` es una cita que existe de verdad en la transcripción y que sostiene esa
+`persona` para esa `etiqueta` (o su exclusión). Es mucho más fácil revisar ocho
+entradas del mapa que las cuarenta atribuciones que dependen de él repartidas por el
+informe — y si una entrada del mapa está mal, todas las atribuciones que arrastra
+también lo están. Objeta cualquier atribución del informe a una persona cuya etiqueta
+no esté identificada en el mapa con una cita que la sostenga, aunque la frase suene
+plausible por sí sola.
+
+BUSCA ACTIVAMENTE LAS ETIQUETAS CONTAMINADAS: para cada etiqueta, lee TODAS sus
+intervenciones en la transcripción, no solo la que cita el mapa, y comprueba si entre
+ellas hay dos que se identifiquen como personas distintas e incompatibles entre sí — el
+generador no puede ver este patrón mientras redacta punto a punto, y tú sí lees la
+transcripción entera. Es exactamente el fallo real del pleno del 3 de septiembre de
+2026: la etiqueta que abre la sesión presidiendo dijo, tres horas después, "llevo como
+presidenta de la asociación de jubilados", y el informe atribuyó ese ruego a la Teniente
+de Alcalde cuando lo había formulado una vecina asistente. Si encuentras ese patrón,
+objétalo aunque el mapa marque la etiqueta como identificada con una cita real: la cita
+puede ser literal y aun así la etiqueta seguir mezclando a dos personas.
+
+COMPRUEBA TAMBIÉN EL PATRÓN CONTRARIO: dos etiquetas DISTINTAS identificadas en el mapa
+como la MISMA persona. Repasa si esas dos etiquetas se alternan hablando en algún tramo
+de la conversación —se responden, se interrumpen, intervienen seguidas en el mismo
+intercambio—: si se alternan, no pueden ser la misma persona (ver REGLA DE TURNOS
+ALTERNOS en DIARIZACION) y el mapa está mal en al menos una de las dos. Objétalo aunque
+las dos citas sean literales.
+
+Y comprueba que la `evidencia` de cada entrada del mapa es la prueba de MÁS PESO que la
+transcripción ofrece para esa etiqueta, según la JERARQUÍA DE PRUEBAS de DIARIZACION
+(autoidentificación > nombrada respondiendo > dirigida por su nombre o cargo), y no una
+prueba más débil que otro pasaje de la misma etiqueta contradice con una más fuerte. Si
+encuentras en la transcripción una prueba más fuerte que la que el mapa cita, objétalo:
+la evidencia registrada tiene que ser la que gana, no la que el generador encontró
+primero.
+
 La transcripción es automática y deforma los nombres propios, así que el redactor tiene
 instrucciones de corregirlos contra esa lista. NO señales como problema que el informe
 escriba "Sergio de Fez Cerezuela" donde la transcripción dice "Féceres Zuela", ni casos
@@ -511,6 +688,16 @@ convocatoria: **un punto redactado como si se hubiera debatido, acordado o votad
 la transcripción no lo respalda, aunque figure en la convocatoria.** La convocatoria dice
 lo que estaba previsto tratar, no lo que se trató. Un punto convocado que se retira, se
 aplaza o del que no se habla en la grabación no puede aparecer en el acta con contenido.
+
+CAMPOS RECIÉN MODIFICADOS:
+Puede que al final del mensaje veas un bloque CAMPOS QUE ACABA DE MODIFICAR EL CORRECTOR
+con rutas del JSON (`orden_del_dia[1].texto`, `asistentes[5]`). Son los campos que han
+cambiado en la última vuelta, calculados comparando el informe anterior con el nuevo. NO
+es una lista de problemas: es dónde mirar primero. Repásalos con especial atención,
+porque una corrección puede arreglar lo que se le pidió y estropear de paso algo que nadie
+discutía — cambiar un nombre entero cuando solo había que matizarlo, por ejemplo. Después
+sigue con tu revisión habitual del informe COMPLETO: esta pista no la sustituye, y un
+problema fuera de esas rutas se señala igual.
 
 Para cada problema devuelve: la sección, la afirmación dudosa, el motivo y una cita
 literal de la transcripción como evidencia. Si el informe es fiel a la transcripción,
@@ -765,14 +952,25 @@ def generar_informe(transcripcion: str, convocatoria: bytes | None = None) -> In
 
 
 def auditar_informe(transcripcion: str, informe: InformePleno,
-                    convocatoria: bytes | None = None) -> AuditoriaInforme:
+                    convocatoria: bytes | None = None,
+                    rutas_tocadas: list[str] | None = None) -> AuditoriaInforme:
     # El auditor recibe la convocatoria igual que el generador. Sin ella marcaría
     # cada título tomado del orden del día como afirmación no respaldada — la
     # transcripción trae el nombre destrozado por Whisper — y quemaría las tres
     # vueltas sin arreglar nada. Es el mismo motivo por el que recibe CORPORACION.
-    _log("  → AUDITOR (busca afirmaciones que la transcripción no respalde)")
+    #
+    # `rutas_tocadas` son los campos que el corrector acaba de cambiar, calculados en
+    # Python comparando el JSON anterior con el nuevo — no se le pregunta a él qué
+    # tocó, que es justo el que se equivoca. Es una pista de dónde mirar primero, no
+    # un recorte del ámbito: el auditor sigue revisando el informe entero.
+    _log("  → AUDITOR (busca afirmaciones que la transcripción no respalde"
+         + (f"; {_plural(len(rutas_tocadas), 'campo recién tocado', 'campos recién tocados')})"
+            if rutas_tocadas else ")"))
     contenido = (f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
+    if rutas_tocadas:
+        contenido += ("\n\nCAMPOS QUE ACABA DE MODIFICAR EL CORRECTOR:\n"
+                      + "\n".join(f"- {r}" for r in rutas_tocadas))
     auditoria = _llamar_llm(PROMPT_AUDITOR, contenido, AuditoriaInforme,
                                convocatoria, "auditor")
     if not auditoria.problemas:
@@ -796,6 +994,52 @@ def corregir_informe(transcripcion: str, informe: InformePleno, problemas: list[
     return _llamar_llm(PROMPT_CORRECTOR, contenido, InformePleno, convocatoria, "corrector")
 
 
+def _aplanar(valor, prefijo: str = ""):
+    """{'a': [{'b': 1}]} → {'a[0].b': 1}. Solo hojas: lo que hay que comparar entre
+    vueltas son los valores concretos, que es donde el corrector cambia una cosa por
+    otra."""
+    if isinstance(valor, dict):
+        for clave, sub in valor.items():
+            yield from _aplanar(sub, f"{prefijo}.{clave}" if prefijo else clave)
+    elif isinstance(valor, list):
+        for i, sub in enumerate(valor):
+            yield from _aplanar(sub, f"{prefijo}[{i}]")
+    else:
+        yield prefijo, valor
+
+
+def _fijar(datos: dict, ruta: str, valor) -> None:
+    """Escribe `valor` en una ruta aplanada ('orden_del_dia[0].votacion.resultado')."""
+    partes = re.findall(r"[^.\[\]]+|\[\d+\]", ruta)
+    obj = datos
+    for parte in partes[:-1]:
+        obj = obj[int(parte[1:-1])] if parte.startswith("[") else obj[parte]
+    ultima = partes[-1]
+    if ultima.startswith("["):
+        obj[int(ultima[1:-1])] = valor
+    else:
+        obj[ultima] = valor
+
+
+# Campos donde una disputa NO puede resolverse eligiendo uno de los dos valores: el acta
+# estaría afirmando como oficial algo que el propio auditor discute. La vía de escape del
+# esquema es la única salida honesta, y es además lo que hace la secretaria en el acta
+# real ante una votación que nadie declara: narra lo que oyó y no proclama resultado.
+# Cada entrada lleva el valor de escape y las pistas que delatan que una objeción del
+# auditor habla de ese campo (`Problema.seccion` es prosa del modelo, no una ruta).
+_AMBIGUOS = {
+    "votacion.resultado": ("no consta", ("votaci", "resultado")),
+}
+
+
+def _escape_de(ruta: str):
+    """(valor de escape, pistas) de una ruta en disputa, o None si no hay escape seguro."""
+    for sufijo, entrada in _AMBIGUOS.items():
+        if ruta.endswith(sufijo):
+            return entrada
+    return None
+
+
 def bucle_informe(transcripcion: str, convocatoria: bytes | None = None,
                   generar=None, auditar=None, corregir=None):
     """Generador → auditor → (corrector → auditor)* con tope MAX_VUELTAS.
@@ -811,20 +1055,118 @@ def bucle_informe(transcripcion: str, convocatoria: bytes | None = None,
     # Solo la ejecución real narra su progreso: si hay fakes inyectados estamos en
     # los tests, y ahí las cabeceras de vuelta solo ensucian la salida.
     narrar = not any((generar, auditar, corregir))
+    # Las rutas que el corrector acaba de tocar viajan al auditor en una lista mutable
+    # que se rellena antes de cada llamada: los fakes que inyectan los tests tienen
+    # firma (transcripcion, informe) y ese contrato no se toca.
+    rutas_tocadas: list[str] = []
     generar = generar or (lambda t: generar_informe(t, convocatoria))
-    auditar = auditar or (lambda t, i: auditar_informe(t, i, convocatoria))
+    auditar = auditar or (lambda t, i: auditar_informe(t, i, convocatoria, rutas_tocadas))
     corregir = corregir or (lambda t, i, p: corregir_informe(t, i, p, convocatoria))
 
     informe = generar(transcripcion)
     problemas = auditar(transcripcion, informe).problemas
-    vueltas = 0
+    vueltas, llamadas = 0, 2
+    # Historial de cada campo del informe a lo largo de las vueltas, para detectar el
+    # ping-pong: el auditor pide un valor, dos vueltas después pide el contrario, y el
+    # corrector obedece a los dos. Se detecta sobre el informe y no sobre las objeciones
+    # porque `Problema.seccion` es prosa que escribe el modelo, no una ruta fiable.
+    historial = {ruta: [valor] for ruta, valor in _aplanar(informe.model_dump())}
+    congelados: dict[str, object] = {}
+
     while problemas and vueltas < MAX_VUELTAS:
         if narrar:
-            _log(f"\n  ── vuelta {vueltas + 1} de {MAX_VUELTAS} ──")
+            _log(f"\n  ── vuelta {vueltas + 1} de {MAX_VUELTAS} "
+                 f"({_plural(len(problemas), 'objeción abierta', 'objeciones abiertas')}) ──")
         informe = corregir(transcripcion, informe, problemas)
         vueltas += 1
+        llamadas += 1
+
+        datos = informe.model_dump()
+        plano = dict(_aplanar(datos))
+        # Oscilación es A → B → A: el campo cambia en esta vuelta y vuelve a un valor
+        # que ya tuvo antes. Un campo que el corrector deja igual (A → A) no es ping-pong.
+        oscilantes = []
+        for ruta, valor in plano.items():
+            previos = historial.get(ruta, [])
+            if ruta in congelados or not previos or valor == previos[-1]:
+                continue
+            if valor in previos[:-1]:
+                oscilantes.append(ruta)
+        for ruta in oscilantes:
+            entrada = _escape_de(ruta)
+            if entrada is None:
+                continue  # se anota en el log, pero no se toca: no hay escape seguro
+            congelados[ruta] = entrada[0]
+        if congelados:
+            # Se reimponen en cada vuelta: el corrector devuelve el informe entero y
+            # volvería a proponer el valor en disputa mientras el auditor lo reclame.
+            for ruta, valor in congelados.items():
+                _fijar(datos, ruta, valor)
+            informe = InformePleno.model_validate(datos)
+            plano = dict(_aplanar(datos))
+
+        cambios = [ruta for ruta, valor in plano.items()
+                   if valor != historial.get(ruta, [None])[-1]]
+        for ruta, valor in plano.items():
+            historial.setdefault(ruta, []).append(valor)
+
+        if narrar:
+            _log(f"     {_plural(len(cambios), 'campo modificado', 'campos modificados')}"
+                 f" · {llamadas} llamadas al modelo")
+            for ruta in oscilantes:
+                entrada = _escape_de(ruta)
+                marca = (f"congelado en {entrada[0]!r} y marcado para revisión humana"
+                         if entrada is not None else "sin vía de escape: se deja como está")
+                _log(f"     ⚠ AMBIGUO EN ORIGEN · {ruta}: el auditor ha pedido un valor "
+                     f"que ya se había descartado — {marca}")
+
+        if not cambios:
+            # El corrector ya no cambia nada: las vueltas que quedan son dinero tirado.
+            if narrar:
+                _log("     el corrector no ha cambiado nada; se sale sin agotar las vueltas")
+            break
+
+        rutas_tocadas[:] = cambios
         problemas = auditar(transcripcion, informe).problemas
+        llamadas += 1
+
+    # Salir con objeciones abiertas sobre un campo que el bucle ya cambió significa que
+    # el auditor sigue discutiendo un valor que él mismo hizo cambiar: es el ping-pong
+    # que no llega a cerrarse porque se acaban las vueltas antes. Pasó de verdad el
+    # 2026-08-29 con la votación del punto 1 —el auditor pidió "rechazado" en la primera
+    # auditoría y "aprobado" en la cuarta—, y el acta se quedó afirmando un resultado
+    # que la grabación no declara. Aquí se cambia por la vía de escape: un hueco que
+    # rellena la secretaria es un fallo recuperable; una votación inventada, no.
+    if problemas:
+        pistas_objeciones = " ".join(f"{p.seccion} {p.afirmacion_dudosa} {p.motivo}"
+                                     for p in problemas).lower()
+        datos = informe.model_dump()
+        actual = dict(_aplanar(datos))
+        ambiguos = []
+        for ruta, valores in historial.items():
+            entrada = _escape_de(ruta)
+            if entrada is None or ruta in congelados or len(set(valores)) < 2:
+                continue  # nunca cambió: nadie lo disputó
+            escape, pistas = entrada
+            if actual.get(ruta) != escape and any(p in pistas_objeciones for p in pistas):
+                _fijar(datos, ruta, escape)
+                congelados[ruta] = escape
+                ambiguos.append((ruta, valores))
+        if ambiguos:
+            informe = InformePleno.model_validate(datos)
+            if narrar:
+                for ruta, valores in ambiguos:
+                    # Solo los cambios: repetir 'rechazado' tres veces no dice nada.
+                    saltos = [v for i, v in enumerate(valores) if i == 0 or v != valores[i - 1]]
+                    _log(f"\n  ⚠ AMBIGUO EN ORIGEN · {ruta}"
+                         f"\n     el bucle lo dejó en {' → '.join(map(repr, saltos))} y el "
+                         f"auditor sigue objetando; se pone en {_escape_de(ruta)[0]!r}."
+                         f"\n     El acta NO afirmará ninguna de las dos posturas: "
+                         f"decídelo contra la grabación.")
+
     if narrar:
         _log(f"\n  bucle terminado: {_plural(vueltas, 'vuelta', 'vueltas')}, "
+             f"{llamadas} llamadas al modelo, "
+             f"{_plural(len(congelados), 'campo ambiguo', 'campos ambiguos')}, "
              f"{_plural(len(problemas), 'objeción', 'objeciones')} sin resolver")
     return informe, problemas

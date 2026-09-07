@@ -1,7 +1,7 @@
 ---
 type: concept
-date_updated: 2026-08-22
-source_count: 5
+date_updated: 2026-09-07
+source_count: 6
 ---
 
 # La vía de escape va dentro del esquema
@@ -115,6 +115,43 @@ porque normalizarla afirmaría que no hubo votación cuando sí la hubo. Normali
 del modelo es legítimo cuando su intención es inequívoca; deja de serlo en cuanto haya que
 adivinar.
 
+## La vía de escape escrita en el campo equivocado (2026-09-07)
+
+El fallo de arriba era el render convirtiendo un `null` en un `0`. Este es el simétrico: el
+**modelo** escribiendo la fórmula de escape de otro campo en uno que pedía `null`, y el
+render dándola por buena.
+
+`presidente` es `str | None`, "solo si la grabación identifica a quien preside". En el pleno
+del 3 de septiembre nadie se identificó, y el modelo, en vez de `null`, escribió el literal
+que sí usan `BloqueRuegos.formulados_por` y el mapa de voces:
+`"no identificado en la grabación"`. Como es una cadena no vacía,
+`informe.presidente or HUECO` la tomó por un nombre, y el acta cerró con:
+
+> *"Y no habiendo más asuntos que tratar y cumpliendo con el objeto del acto, **no
+> identificado en la grabación** levanta la sesión a las veintiuno horas…"*
+
+Ninguna de las tres capas lo vio. El esquema validó (es un `str` legítimo), el auditor no lo
+objetó, y la guía no se lo avisó a la funcionaria. Estuvo en un documento sellable.
+
+**La lección, que es la de "dos vías de escape para lo mismo" llevada un paso más allá:** cuando el esquema usa **dos gramáticas distintas** para "no
+consta" —`null` en unos campos, un literal en prosa en otros—, el modelo las intercambia. No
+distingue que en `formulados_por` esa frase es texto que el acta imprime y en `presidente` es
+un valor prohibido; para él son la misma idea escrita de dos formas, y elige cualquiera.
+
+El arreglo va donde manda el principio de que *la descripción de un campo no es una
+validación*: `InformePleno._presidente_o_nada`, un `field_validator` que normaliza el literal
+(y "no consta", y sus variantes sin tilde) a `None`. Arregla de una vez los dos sitios que
+leían el campo, porque los dos ya guardaban contra `None`.
+
+Y una decisión de forma en el render: `formula_cierre` pasó de `or HUECO` a
+`or PRESIDENCIA["tratamiento"]`. El acta ya afirma "la Presidenta abre la sesión" desde
+`PRESIDENCIA` sin pedirle permiso a la grabación —es un dato curado a mano, que se revisa
+cada vez que cambia quién preside— así que **el cierre no tiene por qué ser más tímido que la
+apertura**. Es el mismo criterio, aplicado en la misma sesión, que la celda "Presidida por"
+ya seguía desde la spec: cuando la grabación no lo dice, manda la fuente autorizada, no el
+hueco. Un intento de vaciar esa celda a `HUECO` se revirtió por eso, y porque el nombre que
+trae la plantilla del Ayuntamiento es el de quien preside de verdad.
+
 ## Relación con las otras capas
 
 Es la primera de las tres capas de garantía de la spec, y la única que actúa *antes* de que el modelo escriba. Las otras dos son [[bucle-generador-auditor-corrector]] (fidelidad a la transcripción, actúa después) y la revisión humana contra la grabación (ver [[por-que-plenos-en-local]], que la convirtió en permanente).
@@ -123,4 +160,4 @@ Ninguna sustituye a las otras: pydantic garantiza la forma del JSON, no su verac
 
 ## Relacionado
 
-[[pipeline-plenos]], [[bucle-generador-auditor-corrector]], [[convocatoria-como-fuente]], [[2026-07-31-plenos-youtube-pipeline-design]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[por-que-plenos-en-local]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]]
+[[pipeline-plenos]], [[bucle-generador-auditor-corrector]], [[convocatoria-como-fuente]], [[2026-07-31-plenos-youtube-pipeline-design]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[por-que-plenos-en-local]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[2026-09-07-guia-forense-y-literal-de-escape]]

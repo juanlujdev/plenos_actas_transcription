@@ -1,6 +1,6 @@
 ---
 type: entity
-date_updated: 2026-08-23
+date_updated: 2026-09-07
 source_count: 8
 ---
 
@@ -26,10 +26,11 @@ cambiaron con este rediseño.
 audio (YouTube o fichero local)
   → yt-dlp descarga la pista de audio tal cual
   → AssemblyAI universal-3-5-pro transcribe el audio ENTERO (language_code=es)
-       ├─ diarización: speaker_labels + speaker_options {min 6, max 10}
+       ├─ subida con reintento (4 intentos, reabriendo el fichero)
+       ├─ diarización: speaker_labels + speaker_options {min 4, max 15}
        └─ prompt + keyterms_prompt + custom_spelling (nombres de la corporación)
-     [respaldo si no hay clave o si falla: ffmpeg trocea en fragmentos de 30 min a
-      mono 64 kbps → Groq whisper-large-v3 por fragmento, verbose_json]
+     [Groq solo si NO hay clave de AssemblyAI —nunca como respaldo si falla—:
+      ffmpeg trocea en fragmentos de 30 min a mono 64 kbps → whisper-large-v3]
   → transcripción con marcas [HH:MM:SS] y etiqueta de locutor
   → bucle gemini-2.5-pro (vía OpenRouter) generador→auditor→corrector
        ([[bucle-generador-auditor-corrector]])
@@ -38,7 +39,10 @@ audio (YouTube o fichero local)
        │    [[diarizacion-como-andamiaje]])
        └─ + convocatoria oficial en PDF, opcional ([[convocatoria-como-fuente]])
   → render determinista InformePleno → .docx sobre la plantilla oficial (sin LLM)
-  → uploads/actas/<fecha>/  (acta .docx, transcripción, informe.json, entrada.json,
+  → render determinista → guía de verificación .html + COMPROBAR ANTES DE SELLAR.txt
+       (sin LLM, con los minutos enlazados al vídeo — [[guia-de-verificacion]])
+  → uploads/actas/<fecha>/  (acta .docx, guía .html, COMPROBAR ANTES DE SELLAR.txt,
+                             transcripción, informe.json, objeciones.json, entrada.json,
                              convocatoria.pdf si se pasó)
 ```
 
@@ -62,9 +66,13 @@ automáticamente no puede llegar a `public/` sin el visto bueno de la secretaria
 | `scripts/procesar_pleno.py` | Orquestación y CLI: `--url` \| `--audio` \| `--rehacer-informe` \| `--publicar` |
 | `scripts/plenos_informe.py` | Esquemas pydantic, los 3 prompts, llamadas a OpenRouter, bucle |
 | `scripts/plenos_acta.py` | `InformePleno` → `.docx` sobre la plantilla oficial (sin LLM) |
+| `scripts/plenos_guia.py` | `InformePleno` + transcripción → guía de verificación `.html` y `COMPROBAR ANTES DE SELLAR.txt` (sin LLM) — ver [[guia-de-verificacion]] |
 | `scripts/plantillas/` | `acta_ordinaria.docx`, `acta_extraordinaria.docx` — plantillas oficiales del Ayuntamiento, convertidas desde Word 97 y versionadas |
 | `scripts/test_plenos.py` | Tests de funciones puras (runner casero, sin pytest) |
-| `uploads/actas/<fecha>/` | Borrador: acta `.docx`, transcripción, `informe.json`, `entrada.json`, `convocatoria.pdf` (gitignorado) |
+| `scripts/asistente_plenos.py` | Asistente guiado para la funcionaria: envuelve el pipeline sin duplicar su lógica — ver [[asistente-para-la-funcionaria]] |
+| `scripts/asistente/LEEME.txt` | Instrucciones en español llano para la funcionaria, en `.txt` para que un doble clic lo abra en el Bloc de notas |
+| `scripts/construir_exe.ps1` | Empaqueta `asistente_plenos.py` con PyInstaller `--onefile` y monta la carpeta distribuible para el PC del Ayuntamiento |
+| `uploads/actas/<fecha>/` | Borrador: acta `.docx`, guía `.html`, `COMPROBAR ANTES DE SELLAR.txt`, transcripción, `informe.json`, `objeciones.json`, `entrada.json`, `convocatoria.pdf` (gitignorado) |
 | `src/components/pages/AyuntamientoPage.jsx` | La sección "Actas de los plenos" de la web, que lista `plenos.json` |
 | `public/plenos/` | Solo tras `--publicar`: `<fecha>-pleno.pdf`, `<fecha>-transcripcion.md` |
 | `public/data/plenos.json` | Índice que lee `usePlenos` → `PlenosView` |
@@ -90,8 +98,19 @@ El desarrollador ejecuta todo esto en **Git Bash**, no en PowerShell (`export VA
 
 Requiere `ASSEMBLYAI_API_KEY` y `OPENROUTER_API_KEY`, más `python-docx` (dependencia local
 del pipeline, no va en `scripts/requirements.txt` porque ese fichero es del bot de Telegram
-y corre en GitHub Actions). `GROQ_API_KEY` y `ffmpeg` solo hacen falta para la rama de
-respaldo.
+y corre en GitHub Actions). `GROQ_API_KEY` y `ffmpeg` solo hacen falta para procesar un
+pleno **sin** clave de AssemblyAI: desde 2026-09-07 esa rama ya no actúa como respaldo
+automático cuando AssemblyAI falla (ver Gotchas).
+
+## El asistente de la funcionaria
+
+Desde 2026-09 existe también `scripts/asistente_plenos.py`: una capa fina, empaquetada
+como `.exe` con PyInstaller, que envuelve este mismo pipeline en un menú de preguntas
+para que la funcionaria del Ayuntamiento genere el borrador sin terminal y sin ver
+jerga técnica. No reemplaza el flujo manual del desarrollador — sigue siendo quien
+ejecuta `--publicar` y hace el commit —, solo le da a ella el paso 1 (generar) sin
+depender de él para cada pleno. El razonamiento de cada decisión de empaquetado está
+en [[asistente-para-la-funcionaria]].
 
 ## Por qué es un borrador y no el documento final
 
@@ -123,6 +142,9 @@ encabezado equivocado en un documento que va a sellarse.
 - **Sin webhooks: se sondea.** El webhook de AssemblyAI solo entrega `transcript_id` y `status` (habría que hacer el `GET` igual) y exige un endpoint público que responda 2xx en 10 s — imposible en un pipeline que corre a mano en un PC. Sondeo cada 20 s.
 - **Whisper deforma los nombres propios** (y AssemblyAI también, menos). `plenos_informe.CORPORACION` lleva el listado de la corporación municipal para que el generador los escriba bien. **El auditor recibe ese mismo listado**: sin él marcaría las correcciones como afirmaciones no respaldadas y el bucle daría tres vueltas inútiles en cada ejecución. Actualizar tras cada elección municipal **y cada vez que cambie quién preside** (ver abajo). Los mismos nombres viajan además en `AAI_KEYTERMS` y `AAI_SPELLING`, que atacan la deformación **antes** de que llegue al LLM. Desde 2026-08-22 `CORPORACION` recoge también a **Elena, la secretaria** —su voz sale en la grabación, pero no es miembro de la Corporación, no vota y nunca va en `asistentes`/`ausentes`— y que a **Mª Rosario Cerdán Pérez la llaman "Chari"**; ambos datos salieron de escuchar la grabación real.
 - **Una etiqueta de locutor es una voz, no una identidad.** El bloque `DIARIZACION` va a los tres roles y define cuándo puede propagarse una identificación a toda la sesión y cuándo no. Todo el razonamiento, y el riesgo que introduce, en [[diarizacion-como-andamiaje]].
+- **Al pleno asiste público, y a veces interviene.** El comentario de `speaker_options` decía *"el público no interviene"* y era **falso**: en ruegos y preguntas intervienen tres o cuatro vecinos. Con siete concejales, la secretaria y esos vecinos el máximo real ronda las **doce voces**, y el tope estaba en diez, así que el transcriptor **fundió a dos personas en una etiqueta** y el acta atribuyó a la Teniente de Alcalde los ruegos de una vecina. Desde 2026-09-07: `min_speakers_expected: 4`, `max_speakers_expected: 15`, y los prompts saben que el público no vota, no va en `asistentes`/`ausentes`, no se puede identificar por descarte contra la corporación y **nunca se nombra con nombre y apellidos** (el acta se publica). Todo el caso, en [[diarizacion-como-andamiaje]].
+- **La subida a AssemblyAI se reintenta; la transcripción no se degrada a Groq.** Un pleno son 100-200 MB y la subida dura minutos: que la conexión se parta (`SSLEOFError`) no es excepcional, y sin reintento se pierde la descarga entera. `_subir_audio` reintenta cuatro veces reabriendo el fichero —el cuerpo ya consumido no se puede reenviar— y el sondeo tolera cortes de red, porque tirar una transcripción que el servidor ya está haciendo, y que ya se ha pagado, no tiene sentido. Y **si hay clave de AssemblyAI ya no se cae a Groq**: no diariza, exige `ffmpeg` (que no está en el PC del Ayuntamiento) y degradar en silencio a un transcriptor peor en un documento que se sella es peor que parar y decirlo.
+- **Los timestamps ya no son solo un rastro interno.** `Votacion.timestamp` y el nuevo `PuntoOrdenDia.timestamp` alimentan la [[guia-de-verificacion]], que convierte cada minuto en un enlace a YouTube. Siguen sin imprimirse en el acta.
 - **Quién preside decide el tratamiento del acta.** A 2026-08-21, el Alcalde-Presidente Sergio de Fez Cerezuela está **de baja médica** y **Lorena Luján Chujfi ejerce la Alcaldía en funciones**; presidió ya el pleno del 7 de julio. Los prompts tratan a quien preside por su cargo y en su género — *"la Sra. Alcaldesa"*, nunca *"el Sr. Alcalde"* —, y `CORPORACION` recoge la situación. Ese dato sirve **solo para el tratamiento**: hay un guardarraíl explícito que prohíbe usarlo para rellenar el campo `presidente` o atribuir intervenciones, que siguen exigiendo que la grabación lo diga. Es también lo que hace correcto conservar el `LORENA LUJÁN CHUJFI` precargado en la celda "Presidida por" de la plantilla cuando `presidente` es `null`.
 - **La convocatoria (`--convocatoria`) va a los tres roles, auditor incluido**, y manda en la forma mientras la grabación manda en el fondo. Es el mismo patrón que `CORPORACION`, y trae su propio riesgo (redactar como debatido un punto que solo estaba previsto). Todo el razonamiento en [[convocatoria-como-fuente]].
 - **La convocatoria no se convierte a texto: el PDF entero va al modelo** como parte multimodal. Las del Ayuntamiento son escaneos —un JPEG sin capa de texto—, así que `pypdf` no saca nada y extraerlas exigiría OCR. Viaja en base64 con el plugin `file-parser` de OpenRouter en **engine `native`**: el engine por defecto es un OCR de pago que devolvería texto plano y perdería la maquetación.
@@ -227,7 +249,52 @@ el paso que ningún cambio de prompt sustituye: el visto bueno de la secretaria.
 
 ## Fallos conocidos, sin arreglar
 
-Los detectó la revisión final de la rama del rediseño y siguen abiertos:
+### Dos atribuciones falsas en el acta del 3 de septiembre de 2026
+
+Las encontró el usuario leyendo el acta, no el auditor. Son el mejor argumento disponible
+para que esto siga siendo un borrador con revisión humana:
+
+- **Unos ruegos de una vecina firmados por la Teniente de Alcalde.** Causa: la diarización
+  fundió a dos personas en la etiqueta `Interviniente B`. El modelo aplicó bien sus reglas
+  sobre una etiqueta contaminada. Corregido de raíz subiendo el tope de voces y enseñándole
+  a detectar la contradicción; ver [[diarizacion-como-andamiaje]].
+- **Una crítica al acta anterior atribuida a D. Joaquín Martínez Luján cuando fue de Dª Mª
+  Rosario Cerdán Pérez.** Causa: la Presidencia dio la palabra a Joaquín por su nombre y
+  habló otra persona. En la propia transcripción había dos pistas que lo desmentían y que
+  ninguna regla usaba; ahora existen ambas (dar la palabra no identifica; si una voz nombra
+  a alguien, no es esa persona).
+
+Ninguna de las dos las marcó el auditor. La segunda **debería** detectarla ahora; la primera
+solo desaparece del todo volviendo a transcribir, porque el tope de voces actúa al
+transcribir, no al redactar.
+
+### Una objeción falsa contra un acta correcta (2026-09-07)
+
+En el mismo pleno del 3 de septiembre, el auditor sostuvo hasta el final que el acta del 7 de
+julio se había rechazado. **No era cierto**: 3 a favor, 2 en contra y 2 abstenciones aprueba
+por mayoría simple (art. 47.1 LRBRL), el acuerdo del acta era correcto y el usuario, presente
+en la sesión, lo confirmó. El análisis completo está en
+[[2026-09-07-guia-forense-y-literal-de-escape]] y [[bucle-generador-auditor-corrector]].
+
+Lo dañino no fue el acta sino el aviso: [[guia-de-verificacion]] le enseñó esa objeción a la
+funcionaria con enlace al minuto, mandándola a corregir algo que estaba bien. Una falsa alarma
+es el defecto que una guía de verificación no puede permitirse.
+
+Cuatro arreglos posibles, **ninguno aplicado** por decisión explícita del usuario:
+
+| | Qué | Tamaño |
+|---|---|---|
+| A | Fijar la regla de mayoría en `PROMPT_AUDITOR` (simple sobre emitidos, abstenciones fuera del cómputo) | ~5 líneas; mata la causa raíz |
+| B | Que el render no componga `ACUERDA` sin recuento ni cautela con `resultado == "no consta"` (`plenos_acta.py:170`) | pequeño |
+| C | `model_validator` en `PuntoOrdenDia`: acuerdo que dice "aprobar/rechazar" contra un `resultado` que no lo afirma → incoherencia detectable sin LLM | pequeño |
+| D | Varias votaciones en un mismo punto | esquema + prompts + render |
+
+**A y B están acoplados con D en este pleno concreto**: arreglar A devuelve `resultado` a
+`"aprobado"`, el render vuelve a imprimir el recuento, y ese 3/2/2 quedaría colgando de un
+`ACUERDA` que cubre también el acta del 19 de mayo, aprobada por asentimiento. Sin D, A mete
+un recuento mal atribuido donde ahora hay una omisión.
+
+### Abiertos desde la revisión de la rama del rediseño
 
 - **La regla de recuentos vive en un bloque `RECUENTOS` que reciben generador y corrector.**
   Estuvo solo en el corrector, y el dato inventado que la incumplía lo había escrito el
@@ -248,6 +315,13 @@ Los detectó la revisión final de la rama del rediseño y siguen abiertos:
   dos y de que sin nombre de pila o etiqueta identificada la atribución es "no
   identificado en la grabación".
 - **`--rehacer-informe` no puede recuperar de `tipo_sesion="no consta"`.** Si el modelo no determina el tipo de sesión, el acta no se genera y el mensaje de consola invita a corregir el `informe.json` — pero **nada vuelve a leer ese fichero**, y repetir el comando llama otra vez al modelo a temperatura 0 sobre la misma transcripción, así que devuelve lo mismo. La única salida documentada para el caso límite es un bucle que no puede terminar. Arreglo previsto (~6 líneas): un `--rehacer-acta <fecha>` que valide el JSON del borrador y llame directamente a `render_acta`. Pasar `--convocatoria` lo evita en la práctica, porque el tipo de sesión sale de ahí.
+  **Resuelto en la práctica por el asistente de la funcionaria** ([[asistente-para-la-funcionaria]]):
+  `rehacer_pleno()` comprueba si el borrador tiene guardada la convocatoria
+  (`<fecha>-convocatoria.pdf`) y, si no la tiene, la pide con la misma pregunta de
+  arrastrar el PDF antes de llamar a `_rehacer_informe`. Es justo lo único que aporta
+  el dato que falta, así que en el flujo de la funcionaria el bucle sin salida no
+  llega a producirse. El arreglo genérico (`--rehacer-acta` validando el JSON) sigue
+  sin existir para quien ejecute el pipeline a mano sin convocatoria.
 - **`Votacion` no modela una votación entre alternativas, y se decidió no arreglarlo.** Un
   empate entre dos propuestas (plenos mensuales vs. cada 40 días) no cabe en
   `a_favor`/`en_contra`/`abstenciones`, así que el modelo lo dobla hasta que entra y la
@@ -301,4 +375,4 @@ afinarse.
 
 ## Relacionado
 
-[[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[acta-oficial-11-febrero-2026]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[hostinger-deploy]], [[github-actions]]
+[[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[acta-oficial-11-febrero-2026]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[hostinger-deploy]], [[github-actions]], [[asistente-para-la-funcionaria]], [[guia-de-verificacion]]

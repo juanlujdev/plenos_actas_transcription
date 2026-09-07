@@ -1,0 +1,170 @@
+═══════════════════════════════════════════════════════════
+  ACTAS DE PLENOS · AYUNTAMIENTO DE ENGUÍDANOS
+  Cómo generar el borrador de un acta
+═══════════════════════════════════════════════════════════
+
+
+1. QUÉ HACE ESTE PROGRAMA
+───────────────────────────────────────────────────────────
+
+Este programa escucha la grabación de un pleno y, con el mismo
+modelo de acta de siempre, prepara un BORRADOR del documento.
+
+Es importante que quede claro: esto NO es el acta oficial. Lo
+oficial es lo que tú revisas, completas y sellas después. El
+programa hace el primer trabajo de redacción para ahorrarte
+tiempo, pero el criterio y la firma siguen siendo tuyos.
+
+
+2. CÓMO SE ABRE
+───────────────────────────────────────────────────────────
+
+Haz doble clic en el icono "Generar acta de un pleno".
+
+Es posible que la primera vez Windows muestre un aviso azul
+diciendo que no reconoce el programa o que "podría poner en
+riesgo tu equipo". Es normal en programas nuevos que no vienen
+de la tienda de Windows. Para continuar:
+
+    1. Haz clic en "Más información".
+    2. Haz clic en "Ejecutar de todas formas".
+
+Esto solo pasa la primera vez que lo abres en este ordenador.
+Las siguientes veces se abrirá directamente.
+
+Se abrirá una ventana negra con letras: es la forma en que el
+programa habla contigo. No la cierres mientras esté trabajando.
+
+
+3. CREAR EL ACTA DE UN PLENO NUEVO
+───────────────────────────────────────────────────────────
+
+En el menú principal, elige la opción "1" y pulsa Enter.
+
+El programa te irá preguntando, paso a paso:
+
+  a) La dirección del vídeo del pleno en YouTube.
+     Ve al navegador, abre el vídeo del pleno, y haz clic una
+     vez sobre la barra de direcciones de arriba (donde pone
+     "https://www.youtube.com/..."). Se seleccionará todo el
+     texto. Pulsa Ctrl+C para copiarlo. Vuelve a la ventana
+     negra del programa, haz clic dentro de ella y pulsa Ctrl+V
+     para pegarlo. Pulsa Enter.
+
+  b) La fecha del pleno.
+     Escríbela en el formato día/mes/año, por ejemplo:
+
+         02/09/2026
+
+     para el 2 de septiembre de 2026. El programa suele
+     adivinar la fecha por su cuenta a partir del título del
+     vídeo; si acierta, solo tienes que pulsar Enter sin
+     escribir nada. Después te preguntará si la fecha es
+     correcta: escribe "s" y pulsa Enter si lo es, o "n" para
+     corregirla.
+
+  c) El PDF de la convocatoria (el orden del día), si lo tienes.
+     Vale tanto el PDF como una foto o un escaneo en JPEG: lo que
+     tengas a mano. Es muy recomendable dárselo, porque de ahí
+     saca los títulos exactos de cada punto, su numeración y los
+     números de expediente; sin él, el acta se basa solo en lo
+     que se entienda de la grabación.
+
+     Para dárselo: abre la carpeta donde tengas guardado ese
+     archivo (PDF o foto), y arrástralo con el ratón hasta la
+     ventana negra del programa (haz clic sobre el archivo,
+     mantén pulsado, y suéltalo dentro de la ventana). Verás que
+     aparece una ruta larga escrita sola. Pulsa Enter.
+
+     Si no lo tienes a mano, simplemente pulsa Enter sin
+     escribir ni arrastrar nada, y el programa seguirá sin él.
+
+  d) Por último te preguntará si quieres empezar. Escribe "s"
+     y pulsa Enter.
+
+
+4. TARDA UNOS 20 MINUTOS
+───────────────────────────────────────────────────────────
+
+Generar el acta de un pleno nuevo tarda alrededor de 20
+minutos, porque primero descarga el audio, luego lo transcribe
+y por último redacta y revisa el documento.
+
+Puedes dejar el ordenador trabajando solo y volver más tarde a
+mirar cómo va. Lo único que NO debes hacer es cerrar la
+ventana negra: si la cierras, el trabajo se para y hay que
+empezar de nuevo.
+
+Mientras trabaja, irás viendo mensajes que dicen por dónde va
+("Descargando la grabación...", "Transcribiendo...",
+"Redactando el acta..."). Es normal que en algún momento
+aparezca un aviso de que "el servicio va lento": el programa
+lo vuelve a intentar por su cuenta, sin que tengas que tocar
+nada ni cerrar la ventana. Simplemente espera.
+
+
+5. DÓNDE APARECE EL ACTA
+───────────────────────────────────────────────────────────
+
+Cuando termina, el programa abre solo la carpeta donde ha
+guardado todo, dentro de "Actas generadas", en una carpeta con
+la fecha del pleno.
+
+Ahí encontrarás el documento Word con el borrador del acta.
+
+En esa misma carpeta hay también un archivo llamado "guía de
+verificación", que se abre con doble clic igual que una página
+web (en el navegador). Esa guía NO es el acta: es una ayuda
+para comprobarla. Dice en qué minuto de la grabación está cada
+punto del orden del día, y esos minutos son enlaces: al
+pulsarlos, el vídeo se abre y salta directo a ese momento, sin
+que tengas que ir buscando por toda la sesión.
+
+Si al revisar la grabación el programa no ha podido confirmar
+del todo alguna frase, te lo dirá en pantalla y además dejará
+un archivo llamado "COMPROBAR ANTES DE SELLAR.txt" en esa misma
+carpeta, con la lista de esos puntos dudosos. Ahora esa lista
+trae también, cuando se ha podido averiguar, el minuto exacto
+de la grabación donde comprobarlo (y la guía de verificación de
+arriba tiene el enlace directo a ese mismo momento). Antes de
+sellar el acta, escucha esos momentos concretos y corrige el
+documento si hace falta.
+
+
+6. VOLVER A GENERAR EL DOCUMENTO DE UN PLENO YA HECHO
+───────────────────────────────────────────────────────────
+
+Elige la opción "2" del menú cuando necesites rehacer solo el
+documento de un pleno que ya procesaste antes, sin volver a
+escuchar toda la grabación. Sirve, por ejemplo:
+
+  · si se ha cambiado la forma en que se escribe el acta y
+    quieres que ese pleno también la use;
+  · si la primera vez el programa no pudo saber si el pleno
+    era ordinario o extraordinario y ahora le vas a dar el PDF
+    o la foto de la convocatoria, que sí lo dice.
+
+El programa te mostrará la lista de plenos ya guardados para
+que elijas cuál. Esto es mucho más rápido que crear el acta
+desde cero: tarda unos 5 minutos, porque no vuelve a descargar
+ni a transcribir nada, solo redacta el documento otra vez.
+
+
+7. SI ALGO FALLA
+───────────────────────────────────────────────────────────
+
+Si en algún momento aparece un mensaje diciendo que ha ocurrido
+un problema, el programa te indicará que avises a Juan Luján y
+te dirá el nombre de un archivo que debes enviarle. Ese archivo
+está siempre dentro de la carpeta:
+
+    Configuración (no tocar) > registros
+
+Solo tienes que localizarlo y enviárselo por correo o por
+WhatsApp; con eso él puede ver exactamente qué ha pasado.
+
+Por cierto: la carpeta "Configuración (no tocar)" no hay que
+tocarla ni abrirla para nada, salvo para coger ese archivo de
+registro cuando algo falle. Ahí dentro está todo lo que el
+programa necesita para funcionar, y moverlo o borrarlo puede
+dejarlo sin funcionar.

@@ -219,7 +219,15 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
 
 def formula_cierre(informe: InformePleno) -> str:
     """Fórmula final del acta. La plantilla no la trae; el acta real sí."""
-    presidente = informe.presidente or HUECO
+    # Mismo criterio que la celda "Presidida por": si la grabación no identifica a quien
+    # preside, manda PRESIDENCIA, que es el dato curado a mano y se revisa cada vez que
+    # cambia quién preside. El acta ya afirma "la Presidenta abre la sesión" desde ahí sin
+    # pedirle permiso a la grabación; el cierre no tiene por qué ser más tímido que la
+    # apertura. Antes esto era `or HUECO`, y como el modelo devolvía la fórmula de escape
+    # ("no identificado en la grabación") en vez de null, el acta del 2026-09-03 cerró con
+    # "...cumpliendo con el objeto del acto, no identificado en la grabación levanta la
+    # sesión..." (el literal lo ataja ahora InformePleno._presidente_o_nada).
+    presidente = informe.presidente or PRESIDENCIA["tratamiento"]
     hora = hora_en_letra(informe.hora_fin) if informe.hora_fin else HUECO
     fecha = fecha_en_letra(informe.fecha_pleno) if informe.fecha_pleno else HUECO
     # "Secretaria – Interventora" lleva raya (–), no guion, tal como en el acta
@@ -233,13 +241,13 @@ def _texto_punto(punto) -> list:
     """Un punto del orden del día como lista de bloques. El modelo separa los bloques de
     debate con una línea en blanco; aquí se convierten en párrafos del documento.
 
-    El primero es la tupla (encabezado, resto): el acta oficial escribe el título en
-    negrita DENTRO del primer párrafo del punto —"2º) APROBACIÓN SI PROCEDE DE LOS
-    APROVECHAMIENTOS FORESTALES DEL EJERCICIO 2026.- Dada cuenta por el Sr. Alcalde..."—,
-    no como línea aparte, y ese párrafo es el único del punto que no lleva sangría."""
+    El primero es la tupla (encabezado, ""): el título va en negrita en su propio
+    párrafo —"2º) APROBACIÓN SI PROCEDE DE LOS APROVECHAMIENTOS FORESTALES DEL EJERCICIO
+    2026."— y el cuerpo empieza en el renglón siguiente. Ese párrafo de título es el
+    único del punto que no lleva sangría."""
     numero = f"{punto.numero}º) " if punto.numero is not None else ""
-    parrafos = [p.strip() for p in punto.texto.split("\n\n") if p.strip()] or [""]
-    bloques = [(f"{numero}{punto.titulo}.- ", parrafos[0]), *parrafos[1:]]
+    parrafos = [p.strip() for p in punto.texto.split("\n\n") if p.strip()]
+    bloques = [(f"{numero}{punto.titulo}.", ""), *parrafos]
     frase = frase_acuerdo(punto)
     if frase:
         bloques.append(frase)
@@ -366,10 +374,13 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
     _poner_celda(doc.tables[_T_ENCABEZADO_ORDEN].rows[0].cells[0], "ORDEN DEL DÍA")
     parrafos = [linea for p in _por_orden_del_dia(informe.orden_del_dia)
                 for linea in _texto_punto(p)]
-    if informe.ruegos_y_preguntas:
-        # Mismo tratamiento que un punto del orden del día —mayúsculas, negrita, párrafo
-        # aparte y sin sangría—, que es lo que le falta al acta. Sin numerar: el número
-        # que le dé la convocatoria no lo sabe este módulo, e inventarlo sería un dato.
+    # Cuando la convocatoria numera RUEGOS Y PREGUNTAS, el punto ya viene en
+    # orden_del_dia y su encabezado ya está escrito: añadir otro lo duplicaba en el acta.
+    # Solo se anuncia aquí si el orden del día no lo trae; sin numerar, porque el número
+    # que le dé la convocatoria no lo sabe este módulo e inventarlo sería un dato.
+    ya_anunciado = any("RUEGOS Y PREGUNTAS" in (p.titulo or "").upper()
+                       for p in informe.orden_del_dia)
+    if informe.ruegos_y_preguntas and not ya_anunciado:
         parrafos.append(("RUEGOS Y PREGUNTAS", ""))
     for bloque in informe.ruegos_y_preguntas:
         parrafos.append(f"Ruegos y preguntas formuladas por {bloque.formulados_por}:")
