@@ -6,7 +6,7 @@ source_count: 6
 
 # La vía de escape va dentro del esquema
 
-Principio de diseño anti-alucinación de [[pipeline-plenos]], enunciado en [[2026-07-31-plenos-youtube-pipeline-design]] e implementado literalmente en `scripts/plenos_informe.py`.
+Principio de diseño anti-alucinación de [[pipeline-plenos]], enunciado en [[2026-07-31-plenos-youtube-pipeline-design]] e implementado literalmente en `plenos_informe.py`.
 
 ## El principio
 

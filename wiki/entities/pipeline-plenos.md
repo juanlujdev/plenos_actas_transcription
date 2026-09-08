@@ -18,9 +18,9 @@ revisa y sella una persona antes de publicarse. Ver [[via-de-escape-en-el-esquem
 [[bucle-generador-auditor-corrector]] para los dos mecanismos de fiabilidad que no
 cambiaron con este rediseño.
 
-## Flujo en dos pasos
+## Flujo
 
-**Paso 1 — generar el borrador** (nunca toca `public/`):
+**Paso 1 — generar el borrador** (todo cae en `uploads/actas/<fecha>/`, gitignorado):
 
 ```
 audio (YouTube o fichero local)
@@ -46,36 +46,30 @@ audio (YouTube o fichero local)
                              convocatoria.pdf si se pasó)
 ```
 
-**Paso 2 — publicar**, tras el email a la secretaria, su revisión y su sello:
+**Paso 2 — el email.** El borrador se envía a la secretaria, que lo completa, lo revisa
+y lo sella. **El pipeline termina ahí**: no publica nada en ningún sitio y no toca git.
 
-```
-python scripts/procesar_pleno.py --publicar <fecha> --pdf "<acta sellada>"
-  → public/plenos/<fecha>-pleno.pdf + <fecha>-transcripcion.md
-  → entrada en public/data/plenos.json
-  → commit manual → deploy ([[hostinger-deploy]])
-```
+Todo lo que genera cae en `uploads/actas/<fecha>/`, gitignorado: un borrador de acta sin
+revisar no tiene por qué acabar versionado.
 
-`--publicar` es **el único punto del pipeline que escribe en `public/`**. Todo lo del
-paso 1 cae en `uploads/actas/<fecha>/`, que está gitignorado — así lo que se genera
-automáticamente no puede llegar a `public/` sin el visto bueno de la secretaria.
+> Hasta el 2026-09-08 existía un `--publicar` que copiaba el acta sellada a la web del
+> municipio. Al separarse este proyecto de `enguidanos_web` se decidió que las actas no se
+> publican en la web, y ese comando se eliminó junto con las rutas a `public/`.
 
 ## Ficheros
 
 | Fichero | Responsabilidad |
 |---|---|
-| `scripts/procesar_pleno.py` | Orquestación y CLI: `--url` \| `--audio` \| `--rehacer-informe` \| `--publicar` |
-| `scripts/plenos_informe.py` | Esquemas pydantic, los 3 prompts, llamadas a OpenRouter, bucle |
-| `scripts/plenos_acta.py` | `InformePleno` → `.docx` sobre la plantilla oficial (sin LLM) |
-| `scripts/plenos_guia.py` | `InformePleno` + transcripción → guía de verificación `.html` y `COMPROBAR ANTES DE SELLAR.txt` (sin LLM) — ver [[guia-de-verificacion]] |
-| `scripts/plantillas/` | `acta_ordinaria.docx`, `acta_extraordinaria.docx` — plantillas oficiales del Ayuntamiento, convertidas desde Word 97 y versionadas |
-| `scripts/test_plenos.py` | Tests de funciones puras (runner casero, sin pytest) |
-| `scripts/asistente_plenos.py` | Asistente guiado para la funcionaria: envuelve el pipeline sin duplicar su lógica — ver [[asistente-para-la-funcionaria]] |
-| `scripts/asistente/LEEME.txt` | Instrucciones en español llano para la funcionaria, en `.txt` para que un doble clic lo abra en el Bloc de notas |
-| `scripts/construir_exe.ps1` | Empaqueta `asistente_plenos.py` con PyInstaller `--onefile` y monta la carpeta distribuible para el PC del Ayuntamiento |
+| `procesar_pleno.py` | Orquestación y CLI: `--url` \| `--audio` \| `--rehacer-informe` \| `--rehacer-acta` |
+| `plenos_informe.py` | Esquemas pydantic, los 3 prompts, llamadas a OpenRouter, bucle |
+| `plenos_acta.py` | `InformePleno` → `.docx` sobre la plantilla oficial (sin LLM) |
+| `plenos_guia.py` | `InformePleno` + transcripción → guía de verificación `.html` y `COMPROBAR ANTES DE SELLAR.txt` (sin LLM) — ver [[guia-de-verificacion]] |
+| `plantillas/` | `acta_ordinaria.docx`, `acta_extraordinaria.docx` — plantillas oficiales del Ayuntamiento, convertidas desde Word 97 y versionadas |
+| `test_plenos.py` | Tests de funciones puras (runner casero, sin pytest) |
+| `asistente_plenos.py` | Asistente guiado para la funcionaria: envuelve el pipeline sin duplicar su lógica — ver [[asistente-para-la-funcionaria]] |
+| `asistente/LEEME.txt` | Instrucciones en español llano para la funcionaria, en `.txt` para que un doble clic lo abra en el Bloc de notas |
+| `construir_exe.ps1` | Empaqueta `asistente_plenos.py` con PyInstaller `--onefile` y monta la carpeta distribuible para el PC del Ayuntamiento |
 | `uploads/actas/<fecha>/` | Borrador: acta `.docx`, guía `.html`, `COMPROBAR ANTES DE SELLAR.txt`, transcripción, `informe.json`, `objeciones.json`, `entrada.json`, `convocatoria.pdf` (gitignorado) |
-| `src/components/pages/AyuntamientoPage.jsx` | La sección "Actas de los plenos" de la web, que lista `plenos.json` |
-| `public/plenos/` | Solo tras `--publicar`: `<fecha>-pleno.pdf`, `<fecha>-transcripcion.md` |
-| `public/data/plenos.json` | Índice que lee `usePlenos` → `PlenosView` |
 
 `plenos_render.py` (JSON → PDF, fpdf2) se borró: su único consumidor era el documento
 publicado, que ahora es el acta sellada, no un PDF de formato propio.
@@ -83,11 +77,11 @@ publicado, que ahora es el acta sellada, no un PDF de formato propio.
 ## CLI
 
 ```powershell
-python -u scripts/procesar_pleno.py --url "https://www.youtube.com/watch?v=..."
-python -u scripts/procesar_pleno.py --url "https://..." --convocatoria "C:\ruta\orden-del-dia.pdf"
-python -u scripts/procesar_pleno.py --audio "C:\ruta.mp3" --fecha 2026-07-07 --titulo "..."
-python -u scripts/procesar_pleno.py --rehacer-informe 2026-07-07
-python scripts/procesar_pleno.py --publicar 2026-07-07 --pdf "C:\ruta\acta-sellada.pdf"
+python -u procesar_pleno.py --url "https://www.youtube.com/watch?v=..."
+python -u procesar_pleno.py --url "https://..." --convocatoria "C:\ruta\orden-del-dia.pdf"
+python -u procesar_pleno.py --audio "C:\ruta.mp3" --fecha 2026-07-07 --titulo "..."
+python -u procesar_pleno.py --rehacer-informe 2026-07-07
+python procesar_pleno.py --rehacer-acta 2026-07-07
 ```
 
 `--rehacer-informe` reutiliza la transcripción ya guardada y solo repite la parte del LLM: permite iterar sobre los prompts sin volver a transcribir, que ahora además es la parte que cuesta dinero. También reutiliza la convocatoria que quedó guardada en el borrador, así que no hay que volver a pasarla en cada iteración.
@@ -96,19 +90,20 @@ python scripts/procesar_pleno.py --publicar 2026-07-07 --pdf "C:\ruta\acta-sella
 
 El desarrollador ejecuta todo esto en **Git Bash**, no en PowerShell (`export VAR=...`, rutas `~/`, salida a fichero con `| tee ~/pleno.log`). Ambos shells sirven; los ejemplos de arriba están en sintaxis PowerShell porque es lo que documenta `CLAUDE.md`.
 
-Requiere `ASSEMBLYAI_API_KEY` y `OPENROUTER_API_KEY`, más `python-docx` (dependencia local
-del pipeline, no va en `scripts/requirements.txt` porque ese fichero es del bot de Telegram
-y corre en GitHub Actions). `GROQ_API_KEY` y `ffmpeg` solo hacen falta para procesar un
+Requiere `ASSEMBLYAI_API_KEY` y `OPENROUTER_API_KEY`, más `python-docx`. Desde la
+separación del repositorio (2026-09-08) todas las dependencias están declaradas en el
+`requirements.txt` propio; antes no lo estaban en ninguna parte, porque el único
+`requirements.txt` del repo compartido era el del bot de Telegram. `GROQ_API_KEY` y `ffmpeg` solo hacen falta para procesar un
 pleno **sin** clave de AssemblyAI: desde 2026-09-07 esa rama ya no actúa como respaldo
 automático cuando AssemblyAI falla (ver Gotchas).
 
 ## El asistente de la funcionaria
 
-Desde 2026-09 existe también `scripts/asistente_plenos.py`: una capa fina, empaquetada
+Desde 2026-09 existe también `asistente_plenos.py`: una capa fina, empaquetada
 como `.exe` con PyInstaller, que envuelve este mismo pipeline en un menú de preguntas
 para que la funcionaria del Ayuntamiento genere el borrador sin terminal y sin ver
-jerga técnica. No reemplaza el flujo manual del desarrollador — sigue siendo quien
-ejecuta `--publicar` y hace el commit —, solo le da a ella el paso 1 (generar) sin
+jerga técnica. No reemplaza el flujo manual del desarrollador — `--rehacer-informe` y
+`--rehacer-acta` siguen siendo suyos —, solo le da a ella la generación del borrador sin
 depender de él para cada pleno. El razonamiento de cada decisión de empaquetado está
 en [[asistente-para-la-funcionaria]].
 
@@ -118,9 +113,9 @@ El acta que genera el pipeline es el texto que un modelo redactó a partir de un
 transcripción automática: fiel a la grabación en la medida en que lo garantizan
 [[via-de-escape-en-el-esquema]] y [[bucle-generador-auditor-corrector]], pero sin validez
 legal hasta que la secretaria — Interventora del Ayuntamiento la revise, complete lo que
-falte (el número de expediente, cualquier hueco `___________`) y la selle. Solo ese PDF
-sellado es lo que `--publicar` sube a la web; nada generado automáticamente llega a
-`public/` sin pasar por esa revisión humana.
+falte (el número de expediente, cualquier hueco `___________`) y la selle. Ese PDF sellado
+es el documento oficial, y el pipeline no interviene en nada de lo que ocurra después:
+no lo publica, no lo archiva y no lo versiona.
 
 El tipo de sesión (ordinaria/extraordinaria) decide qué plantilla se usa. Si no consta en
 la grabación, el acta **no se genera** — elegir plantilla a ciegas produciría un
@@ -178,7 +173,7 @@ encabezado equivocado en un documento que va a sellarse.
 - Los timestamps se guardan en el JSON como rastro de verificación, pero **no se imprimen** en el acta: sirven para auditar contra la grabación, no para el lector.
 - El acta se redacta **en presente de indicativo** con registro y fórmulas de acta municipal ("Toma la palabra...", "El Pleno ACUERDA...", "La Corporación se da por informada"), por ser el estilo real del Ayuntamiento (ver [[2026-08-21-acta-oficial-plenos-design]]).
 - Usar `python -u`: al redirigir la salida a fichero, sin eso Python la almacena en búfer y parece colgado.
-- **El acta generada es un borrador, no el documento oficial.** Se envía por email a la secretaria, que lo completa y lo sella; solo entonces `--publicar` lo lleva a `public/`. Nada del pipeline escribe ahí antes de eso.
+- **El acta generada es un borrador, no el documento oficial.** Se envía por email a la secretaria, que lo completa, lo revisa y lo sella. El pipeline termina ahí: no publica el resultado en ningún sitio ni toca git.
 - **El tipo de sesión decide la plantilla**, y si no consta en la grabación el acta no se genera: elegir a ciegas produciría un encabezado equivocado en un documento que se sella.
 - **La transcripción se guarda ANTES de llamar al LLM**, no después. Es lo único del
   pipeline que cuesta dinero y no se puede repetir gratis; el bucle LLM, en cambio, se
@@ -199,7 +194,7 @@ encabezado equivocado en un documento que va a sellarse.
 
 El `.md` que se guarda junto al acta es **exactamente la misma cadena que recibe Gemini** (`transcribir()` → variable `transcripcion` → `bucle_informe()` y `write_text()`), no una versión resumida. Es por tanto la prueba de auditoría del acta: si una afirmación no aparece ahí, el modelo la inventó.
 
-Tras `--publicar` se copia a `public/plenos/` —o sea, se despliega a Hostinger— pero **deliberadamente no se enlaza desde la web**: es apoyo de verificación, no contenido para el visitante. Decisión consciente del usuario, asumiendo que es accesible por URL directa, porque se trata de una sesión pública que ya está íntegra en YouTube.
+Se queda en la carpeta del borrador, junto al acta: es apoyo de verificación para quien revisa, no contenido para nadie más. Cuando existía la publicación en la web se copiaba también allí sin enlazarla; al retirarse la publicación (2026-09-08) esa copia dejó de tener sentido.
 
 La spec original preveía además publicar el **informe** en Markdown además de en PDF. No se implementó: `render_markdown()` llegó a escribirse pero nunca se llamó desde el pipeline, y se borró en 2026-08-08 por ser código muerto — antes, por tanto, de que el propio PDF de informe desapareciera del todo con el rediseño del acta oficial.
 
@@ -207,7 +202,7 @@ La spec original preveía además publicar el **informe** en Markdown además de
 
 Primera ejecución end-to-end real el 2026-08-08, con el pipeline de informe/PDF anterior al rediseño, sobre "PLENO EXTRAORDINARIO 7 DE JULIO 2026" (2h16m): transcripción correcta, auditor con visto bueno a la primera, PDF de 2 páginas.
 
-El rediseño del acta oficial ([[2026-08-21-acta-oficial-plenos-design]]) se implementó y se validó de dos formas parciales el 2026-08-21: `python scripts/test_plenos.py` en verde, y una validación aislada del render (`plenos_acta.render_acta`) contra el patrón de estilo del acta del 11 de febrero, con un informe de prueba construido a mano — ver
+El rediseño del acta oficial ([[2026-08-21-acta-oficial-plenos-design]]) se implementó y se validó de dos formas parciales el 2026-08-21: `python test_plenos.py` en verde, y una validación aislada del render (`plenos_acta.render_acta`) contra el patrón de estilo del acta del 11 de febrero, con un informe de prueba construido a mano — ver
 `.superpowers/sdd/2026-08-21-acta-oficial-plenos/validacion-estilo.md`. Ese mismo día se le añadieron los cinco ajustes de [[2026-08-21-convocatoria-y-ajustes-acta]], el mayor de ellos la convocatoria oficial.
 
 El 2026-08-22 se migró el bucle a OpenRouter con `gemini-2.5-pro` y se verificó contra la
@@ -355,26 +350,25 @@ rediseño del acta oficial; los otros cuatro siguen abiertos:
 4. ~~Averiguar qué usa el PC de secretaría (Drive, OneDrive u otro) para dejar allí una carpeta con los informes generados.~~ **Resuelto** por [[2026-08-21-acta-oficial-plenos-design]]: no hace falta averiguar nada de ese equipo — el borrador se envía por **email** a la secretaria y ella devuelve el PDF sellado, sin depender de ninguna nube compartida. La vía de automatizar el pipeline vía carpeta compartida (que este punto dejaba abierta, ver [[por-que-plenos-en-local]]) queda descartada junto con él.
 5. **Los audios de plenos que debe entregar el funcionario.** La spec original contaba con dos grabaciones de ~4h que nunca llegaron. Son el único material que ejercitaría el modo `--audio`, hoy implementado pero **probado solo con audio sintético**: sin vídeo de YouTube de por medio, hay que pasar `--fecha` y `--titulo` a mano. Conviene estar atento la primera vez que se use con material real, sobre todo si el audio viene en un formato o calidad distintos de los que sirve YouTube.
 
-## Cómo lo ve el visitante de la web
+## La publicación en la web, y por qué se retiró
 
-La sección de [[hostinger-deploy]] que lista los plenos vive en
-`src/components/pages/AyuntamientoPage.jsx` y lee `public/data/plenos.json`. Hasta
-2026-08-21 se titulaba *"Informes de los plenos"* y advertía: *"Resumen automático de cada
-sesión a partir de la grabación. El documento oficial es el acta aprobada por el Pleno."*
+Hasta el 2026-09-08 el acta sellada se copiaba a la web del municipio, que la listaba en
+su sección de Ayuntamiento. Esa sección dejó una lección que sobrevive a su retirada:
+hasta 2026-08-21 se titulaba *"Informes de los plenos"* y advertía *"Resumen automático de
+cada sesión a partir de la grabación"*. Con el rediseño del acta oficial, el fichero detrás
+del enlace pasó a ser el documento sellado por la Secretaría, y ese texto le decía al
+vecino que un documento con validez legal era un resumen automático no oficial. Ni la spec
+ni el plan miraron el frontend —ambos hablaban solo de código—, así que lo detectó la
+revisión final de la rama, no el diseño.
 
-Esa nota quedó **falsa y peligrosa** con el rediseño: el fichero detrás del enlace pasó a
-ser el acta sellada por la Secretaría, y el texto le decía al vecino que un documento con
-validez legal era un resumen automático no oficial. Ni la spec ni el plan miraron el
-frontend — ambos hablaban solo de `scripts/` —, así que lo detectó la revisión final de la
-rama, no el diseño.
+**Cómo se nombra el documento importa tanto como su contenido.** Un acta sellada no es un
+resumen automático, y tampoco es un acta *aprobada*: la aprobación es el primer punto de
+la sesión siguiente. Cualquier sitio donde este pipeline entregue su resultado tiene que
+distinguir las tres cosas.
 
-Ahora dice *"Actas de los plenos"*, el botón es *"Acta PDF ↓"* y la nota describe el acta
-como *"revisada, completada y sellada por la Secretaría-Intervención del Ayuntamiento"*.
-**Deliberadamente no dice "aprobada por el Pleno"**: la aprobación del acta es el primer
-punto de la sesión siguiente, y lo que se publica es la sellada, no necesariamente ya
-aprobada. Si en el futuro se decide publicar solo actas aprobadas, ese texto puede
-afinarse.
+Con la separación del proyecto (2026-09-08) se decidió que las actas no se publican en la
+web: el producto es el borrador que recibe la secretaria.
 
 ## Relacionado
 
-[[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[acta-oficial-11-febrero-2026]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[hostinger-deploy]], [[github-actions]], [[asistente-para-la-funcionaria]], [[guia-de-verificacion]]
+[[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[acta-oficial-11-febrero-2026]], [[2026-08-22-plenos-assemblyai-diarizacion]], [[2026-08-22-plenos-openrouter-gemini-pro]], [[persistir-lo-caro-antes-de-lo-fragil]], [[2026-08-21-acta-oficial-plenos-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-07-31-plenos-youtube-pipeline-design]], [[diarizacion-como-andamiaje]], [[convocatoria-como-fuente]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[fallback-modelos-ia]], [[asistente-para-la-funcionaria]], [[guia-de-verificacion]]

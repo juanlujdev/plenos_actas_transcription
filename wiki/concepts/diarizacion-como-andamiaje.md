@@ -18,7 +18,7 @@ pinta de oficial, que es justo lo que [[via-de-escape-en-el-esquema]] existe par
 
 ## La regla
 
-El bloque `DIARIZACION` de `scripts/plenos_informe.py` la fija así:
+El bloque `DIARIZACION` de `plenos_informe.py` la fija así:
 
 1. La misma etiqueta es la misma persona durante toda la sesión — **salvo que el
    transcriptor haya fundido dos voces parecidas**, que ocurrió y tiene su propio apartado

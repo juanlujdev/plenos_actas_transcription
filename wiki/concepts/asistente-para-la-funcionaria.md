@@ -7,8 +7,8 @@ source_count: 1
 # El asistente para la funcionaria: empaquetar sin reescribir
 
 [[pipeline-plenos]] lo ejecuta a mano el desarrollador desde su PC, con `python -u
-scripts/procesar_pleno.py --url "..."` ([[por-que-plenos-en-local]]). El objetivo de
-`scripts/asistente_plenos.py` no es sustituir ese pipeline, sino envolverlo: que la
+procesar_pleno.py --url "..."` ([[por-que-plenos-en-local]]). El objetivo de
+`asistente_plenos.py` no es sustituir ese pipeline, sino envolverlo: que la
 funcionaria del Ayuntamiento genere el borrador del acta con un doble clic y tres
 preguntas, sin terminal, sin Python instalado y sin ver una línea de jerga técnica. Los
 prompts, los esquemas, el bucle y el render del `.docx` no se tocan.
@@ -84,14 +84,16 @@ pantalla es una frase y la ruta del log; el log es lo que ella envía al desarro
 
 ## Por qué la funcionaria genera pero no publica
 
-El asistente no toca `public/` ni git en ningún caso: no hay opción de `--publicar`
-en su menú, y tampoco de `--rehacer-acta`, que son herramientas del desarrollador.
-El reparto de papeles es explícito en la spec: ella genera el borrador, lo revisa, lo
-completa y lo sella; el desarrollador, con el PDF sellado en la mano, ejecuta
-`--publicar` y hace el commit desde su propio PC. Es la misma frontera que ya existía
-en el pipeline manual — `--publicar` es el único punto que escribe en `public/` — y
-el asistente la conserva en vez de intentar automatizar el paso que exige revisión y
-sello humanos. Ampliar su alcance a publicar habría significado darle acceso a un
+El asistente no toca git en ningún caso, y su menú no ofrece `--rehacer-acta` ni
+`--rehacer-informe`, que son herramientas del desarrollador. El reparto de papeles es
+explícito en la spec: ella genera el borrador y lo envía; la secretaria lo revisa, lo
+completa y lo sella.
+
+> Cuando se escribió esto, el reparto tenía un tercer tramo: el desarrollador, con el PDF
+> sellado en la mano, ejecutaba `--publicar` para subir el acta a la web del municipio.
+> Esa publicación se retiró el 2026-09-08 al separarse el proyecto. La frontera que
+> importa sigue siendo la misma y ahora es más simple: el asistente genera, las personas
+> revisan, y nada se publica automáticamente. Ampliar su alcance a publicar habría significado darle acceso a un
 repo git y a credenciales que no le corresponden para una tarea que ocurre una vez al
 mes.
 

@@ -138,7 +138,7 @@ experimento, barato de probar con `--rehacer-informe`.
 
 ## Tests
 
-`scripts/test_plenos.py` gana 17 comprobaciones: que el bloque de recuentos llega al
+`test_plenos.py` gana 17 comprobaciones: que el bloque de recuentos llega al
 generador, que exige `null` en recuentos incompletos, que una abstención verbalizada sí se
 cuenta, que el resultado se conserva, que el aviso de los dos Martínez llega al generador
 y al auditor, y nueve sobre la normalización de la cadena `"sin votación"` (incluida la

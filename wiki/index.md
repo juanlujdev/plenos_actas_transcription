@@ -1,20 +1,12 @@
 # Índice de la wiki
 
-Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy). Ver `CLAUDE.md` sección "LLM Wiki" para las convenciones.
+Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy). Ver
+`CLAUDE.md` sección "LLM Wiki" para las convenciones.
 
 ## Fuentes
 
 | Página | Fuente original | Actualizado |
 |--------|------------------|-------------|
-| [[bot-telegram-openrouter-deploy]] | `docs/superpowers/bot-telegram-openrouter-deploy.md` | 2026-07-06 |
-| [[debug-telegram-gemini-429]] | `docs/superpowers/debug-telegram-gemini-429.md` | 2026-07-06 |
-| [[2026-06-26-agenda-automatica]] | `docs/superpowers/plans/2026-06-26-agenda-automatica.md` | 2026-07-06 |
-| [[2026-06-28-bot-telegram-cloudflare-webhook]] | `docs/superpowers/plans/2026-06-28-bot-telegram-cloudflare-webhook.md` | 2026-07-06 |
-| [[2026-07-01-bandos-desc-short-news-modal]] | `docs/superpowers/plans/2026-07-01-bandos-desc-short-news-modal.md` | 2026-07-06 |
-| [[2026-07-06-llm-wiki-obsidian]] | `docs/superpowers/plans/2026-07-06-llm-wiki-obsidian.md` | 2026-07-06 |
-| [[2026-06-28-bot-telegram-cloudflare-webhook-design]] | `docs/superpowers/specs/2026-06-28-bot-telegram-cloudflare-webhook-design.md` | 2026-07-06 |
-| [[2026-07-01-bandos-desc-short-news-modal-design]] | `docs/superpowers/specs/2026-07-01-bandos-desc-short-news-modal-design.md` | 2026-07-06 |
-| [[2026-07-06-llm-wiki-obsidian-design]] | `docs/superpowers/specs/2026-07-06-llm-wiki-obsidian-design.md` | 2026-07-06 |
 | [[2026-07-31-plenos-youtube-pipeline-design]] | `docs/superpowers/specs/2026-07-31-plenos-youtube-pipeline-design.md` ⚠️ parcialmente superada | 2026-08-08 |
 | [[2026-08-21-acta-oficial-plenos-design]] | `docs/superpowers/specs/2026-08-21-acta-oficial-plenos-design.md` | 2026-08-21 |
 | [[2026-08-21-convocatoria-y-ajustes-acta]] | conversación de trabajo del 2026-08-21 (sin spec ni plan) | 2026-08-21 |
@@ -22,53 +14,34 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[2026-08-22-plenos-assemblyai-diarizacion]] | conversación de trabajo del 2026-08-22 (sin spec ni plan) | 2026-08-22 |
 | [[2026-08-22-primera-ejecucion-e2e-acta-oficial]] | conversación de trabajo del 2026-08-22 (sin spec ni plan) | 2026-08-22 |
 | [[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]] | conversación de trabajo del 2026-08-23 (sin spec ni plan) | 2026-08-23 |
-| [[acta-oficial-11-febrero-2026]] | `~/Downloads/Actas Enguidanos Plenos/20260512_Acta_Borrador…pdf` (documento del Ayuntamiento) | 2026-08-23 |
+| [[acta-oficial-11-febrero-2026]] | acta borrador del Ayuntamiento en PDF (documento oficial) | 2026-08-23 |
 | [[2026-09-07-guia-forense-y-literal-de-escape]] | conversación de trabajo del 2026-09-07 (sin spec ni plan) | 2026-09-07 |
 
 ## Entidades
 
 | Página | Descripción | Actualizado |
 |--------|-------------|-------------|
-| [[telegram-bot]] | Bot de Telegram (`scripts/procesar_telegram.py`) que clasifica y publica eventos — se ejecuta en GitHub Actions | 2026-07-06 |
-| [[cloudflare-worker]] | Worker que recibe el webhook de Telegram y dispara GitHub Actions | 2026-07-30 |
-| [[github-actions]] | Workflows de scan/confirm/deploy/diagnóstico | 2026-07-30 |
-| [[hostinger-deploy]] | Build Vite + deploy a Hostinger por FTP con gate condicional (antes GitHub Pages) | 2026-07-30 |
-| [[clasificacion-ia]] | Clasificación de publicaciones con Gemini/OpenRouter (Gemma + fallback Nemotron) | 2026-07-30 |
-| [[eventos-json]] | `public/data/eventos.json`, fuente única de verdad del contenido dinámico | 2026-07-30 |
-| [[sistema-agenda-automatica]] | El sistema completo de publicación automática de eventos/bandos | 2026-07-30 |
-| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; validado end-to-end el 2026-08-22 | 2026-09-07 |
+| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; validado end-to-end el 2026-08-22 | 2026-09-08 |
 
 ## Conceptos
 
 | Página | Descripción | Actualizado |
 |--------|-------------|-------------|
-| [[confirmacion-si-no]] | Por qué la confirmación manual SI/NO en dos ejecuciones asíncronas | 2026-07-06 |
-| [[gate-deploy-condicional]] | Por qué el gate y el trigger `workflow_run` en el deploy | 2026-07-30 |
-| [[fallback-modelos-ia]] | Historial de elección/migración de modelos de IA, 429 y fallback Gemma→Nemotron; por qué agenda y plenos tienen políticas opuestas | 2026-08-22 |
-| [[limpieza-artefactos-tokenizacion]] | Limpieza de `<pad>`/`톱` (Gemma 4) y bloques `<think>` (Nemotron) | 2026-07-30 |
-| [[fuente-unica-eventos-json]] | Por qué unificar datos en un solo JSON fetcheado en runtime | 2026-07-30 |
-| [[desc-short-truncado]] | Por qué `desc_short` y truncado en News/Agenda | 2026-07-06 |
-| [[doble-validacion-propietario]] | Doble validación de `TELEGRAM_OWNER_ID` (Worker + script) | 2026-07-06 |
-| [[patron-llm-wiki-karpathy]] | El patrón "LLM Wiki" de Karpathy aplicado a este proyecto | 2026-07-06 |
-| [[por-que-cloudflare-worker]] | Por qué Cloudflare y no GitHub Actions directamente para el webhook | 2026-07-30 |
-| [[latencia-workflow-run]] | Por qué el deploy puede tardar hasta ~30 min en dispararse tras un commit del bot, y la solución propuesta (dispatch directo) | 2026-08-07 |
-| [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline de plenos | 2026-08-22 |
-| [[via-de-escape-en-el-esquema]] | Diseño anti-alucinación: el esquema nunca debe forzar al modelo a inventar — ni ofrecerle dos vías de escape para lo mismo, ni dos gramáticas para decir "no consta" | 2026-09-07 |
 | [[bucle-generador-auditor-corrector]] | Los tres roles LLM y el `while` determinista que verifica el acta; qué pasa cuando lo que oscila es una regla de derecho y no un dato | 2026-09-07 |
-| [[convocatoria-como-fuente]] | El orden del día oficial como segunda fuente: manda en la forma, la grabación manda en el fondo | 2026-08-22 |
+| [[via-de-escape-en-el-esquema]] | Diseño anti-alucinación: el esquema nunca debe forzar al modelo a inventar — ni ofrecerle dos vías de escape para lo mismo, ni dos gramáticas para decir "no consta" | 2026-09-07 |
 | [[diarizacion-como-andamiaje]] | La etiqueta de locutor es una voz, no una identidad: cuándo puede propagarse, qué riesgo trae y el día que ese riesgo ocurrió | 2026-09-07 |
+| [[convocatoria-como-fuente]] | El orden del día oficial como segunda fuente: manda en la forma, la grabación manda en el fondo | 2026-08-22 |
+| [[guia-de-verificacion]] | Por qué el acta lleva una guía HTML con los minutos del vídeo, y por qué no es un segundo .docx | 2026-09-07 |
 | [[persistir-lo-caro-antes-de-lo-fragil]] | Lo que cuesta dinero se escribe en disco antes de llamar a lo que puede fallar | 2026-08-22 |
+| [[fallback-modelos-ia]] | Por qué el modelo que redacta el acta no tiene respaldo y la transcripción sí | 2026-09-08 |
+| [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline | 2026-08-22 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
 | [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-07 |
-| [[guia-de-verificacion]] | Por qué el acta lleva una guía HTML con los minutos del vídeo, y por qué no es un segundo .docx | 2026-09-07 |
 
 ## Síntesis
 
-| Página | Pregunta | Actualizado |
-|--------|----------|-------------|
-| [[cloudflare-worker-que-por-que-como]] | Qué se hizo con Cloudflare, por qué y cómo funciona | 2026-07-29 |
-| [[donde-se-ejecuta-el-bot]] | Dónde corre procesar_telegram.py: GitHub Actions, no Cloudflare ni Hostinger | 2026-07-30 |
-| [[flujo-completo-corregido]] | Flujo end-to-end verificado: la imagen no viaja por Cloudflare; orden main→Hostinger | 2026-07-30 |
+Ninguna. Las que había (`cloudflare-worker-que-por-que-como`, `donde-se-ejecuta-el-bot`,
+`flujo-completo-corregido`) eran del bot de agenda y se quedaron en `enguidanos_web`.
 
 ## Pendientes de ingerir
 

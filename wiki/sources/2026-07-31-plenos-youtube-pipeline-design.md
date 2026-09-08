@@ -44,4 +44,4 @@ Material previsto: 1 vídeo del canal + 2 audios de ~4h de una funcionaria. Desa
 
 ## Entidades y conceptos relacionados
 
-[[pipeline-plenos]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[github-actions]], [[hostinger-deploy]], [[clasificacion-ia]]
+[[pipeline-plenos]], [[por-que-plenos-en-local]], [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]], [[por-que-plenos-en-local]]

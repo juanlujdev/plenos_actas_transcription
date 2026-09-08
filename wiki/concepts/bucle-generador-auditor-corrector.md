@@ -6,7 +6,7 @@ source_count: 6
 
 # Bucle generador → auditor → corrector
 
-Mecanismo de fiabilidad de [[pipeline-plenos]] para que el informe sea fiel a la transcripción. Diseñado en [[2026-07-31-plenos-youtube-pipeline-design]], implementado en `scripts/plenos_informe.py` y aprobado por el usuario en un checkpoint explícito durante el desarrollo.
+Mecanismo de fiabilidad de [[pipeline-plenos]] para que el informe sea fiel a la transcripción. Diseñado en [[2026-07-31-plenos-youtube-pipeline-design]], implementado en `plenos_informe.py` y aprobado por el usuario en un checkpoint explícito durante el desarrollo.
 
 ## Los tres roles
 
@@ -257,4 +257,4 @@ Dos detalles de implementación: el `print` lleva `flush=True` porque la salida 
 
 ## Relacionado
 
-[[pipeline-plenos]], [[via-de-escape-en-el-esquema]], [[convocatoria-como-fuente]], [[2026-07-31-plenos-youtube-pipeline-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[persistir-lo-caro-antes-de-lo-fragil]], [[clasificacion-ia]], [[por-que-plenos-en-local]], [[2026-09-07-guia-forense-y-literal-de-escape]], [[guia-de-verificacion]]
+[[pipeline-plenos]], [[via-de-escape-en-el-esquema]], [[convocatoria-como-fuente]], [[2026-07-31-plenos-youtube-pipeline-design]], [[2026-08-21-convocatoria-y-ajustes-acta]], [[2026-08-22-primera-ejecucion-e2e-acta-oficial]], [[persistir-lo-caro-antes-de-lo-fragil]], [[por-que-plenos-en-local]], [[2026-09-07-guia-forense-y-literal-de-escape]], [[guia-de-verificacion]]

@@ -6,7 +6,7 @@ date_updated: 2026-08-22
 # Plenos: del SDK de Gemini a OpenRouter con `gemini-2.5-pro`
 
 Fuente: conversación de trabajo del 2026-08-22, sin spec ni plan previos. Cambio acotado
-al bucle LLM de [[pipeline-plenos]]; el bot de agenda ([[clasificacion-ia]]) no se tocó.
+al bucle LLM de [[pipeline-plenos]]; el bot de agenda de la web del municipio, que entonces vivía en el mismo repositorio, no se tocó.
 
 ## Qué se decidió
 
@@ -22,7 +22,7 @@ Con ello queda resuelto el punto 2 de los pendientes de producción de [[pipelin
 
 ## Qué cambió en el código
 
-Todo en `scripts/plenos_informe.py`, ~90 líneas del bloque de llamadas:
+Todo en `plenos_informe.py`, ~90 líneas del bloque de llamadas:
 
 | Antes | Ahora |
 |---|---|
@@ -41,7 +41,7 @@ Tres detalles que no son evidentes:
    fija `additionalProperties: false` y borra los `default`. **No debilita
    [[via-de-escape-en-el-esquema]]**: la vía de escape de esos campos es admitir `null`,
    no estar ausentes, y eso lo conserva el `anyOf` del propio esquema. Hay cinco asserts
-   en `scripts/test_plenos.py` que lo fijan.
+   en `test_plenos.py` que lo fijan.
 2. **El PDF de la convocatoria viaja con `plugins: [{"id": "file-parser", "pdf":
    {"engine": "native"}}]`.** El engine por defecto de OpenRouter es un OCR de pago que
    devolvería texto plano y perdería la maquetación — justo lo que
@@ -67,7 +67,7 @@ Smoke test contra la API real (`scratchpad/smoke_openrouter.py`, la clave se bor
   *"AYUNTAMIENTO DE ENGUÍDANOS (CUENCA) ACTA DE LA SESION 06/2015 DE 24 DE JUNIO..."*.
 - **Sin fallback silencioso**: la respuesta trae `model: google/gemini-2.5-pro`,
   `provider: Google`.
-- `python scripts/test_plenos.py` en verde, incluidos los cinco tests nuevos.
+- `python test_plenos.py` en verde, incluidos los cinco tests nuevos.
 
 Sigue faltando la validación end-to-end con un pleno real.
 
@@ -83,4 +83,4 @@ entera) se sostiene.
 ## Relacionado
 
 [[pipeline-plenos]], [[fallback-modelos-ia]], [[via-de-escape-en-el-esquema]],
-[[bucle-generador-auditor-corrector]], [[convocatoria-como-fuente]], [[clasificacion-ia]]
+[[bucle-generador-auditor-corrector]], [[convocatoria-como-fuente]], [[fallback-modelos-ia]]

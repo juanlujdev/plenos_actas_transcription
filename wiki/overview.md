@@ -1,11 +1,47 @@
 # Overview del proyecto
 
-Enguídanos Web es una SPA React 18 + Vite que sirve como sitio institucional del municipio, desplegada en Hostinger (migrada desde GitHub Pages, que fue hosting temporal de revisión, el 2026-07-22). Además del contenido estático habitual (patrimonio, naturaleza, alojamientos, etc.), el proyecto incluye [[sistema-agenda-automatica]]: un pipeline que permite al Ayuntamiento publicar eventos y bandos municipales enviando fotos o texto a un bot de Telegram, sin tocar código ni hacer un deploy manual. Todo el contenido dinámico vive en una única fuente de verdad, [[eventos-json]] (`public/data/eventos.json`), leída por el frontend en tiempo de ejecución vía `fetch` (`useEventos()`), nunca importada como módulo — así el bot puede actualizar contenido sin depender de un rebuild del bundle JS.
+Este proyecto convierte la grabación de cada sesión plenaria del Ayuntamiento de
+Enguídanos en el borrador del **acta oficial**, rellenando la plantilla Word que usa la
+secretaría. El flujo es: audio (YouTube o fichero local) → transcripción diarizada con
+AssemblyAI `universal-3-5-pro` (Groq `whisper-large-v3` como respaldo) → bucle
+`gemini-2.5-pro` vía OpenRouter validado contra esquemas pydantic → relleno determinista
+del `.docx`, sin LLM. Todo el detalle está en [[pipeline-plenos]].
 
-El pipeline ha evolucionado en cuatro fases documentadas en las fuentes ingeridas. Empezó como una migración de datos (unificar eventos y bandos dispersos en un solo JSON, ver [[fuente-unica-eventos-json]]) más un cron de GitHub Actions cada 15 minutos que llamaba a Gemini directamente para clasificar los mensajes del propietario ([[telegram-bot]], [[clasificacion-ia]]). Esa primera generación sufrió varios problemas típicos de integrar una IA gratuita en producción — rate limits 429, artefactos de tokenización (`<pad>`, `톱`) en las respuestas de Gemma, JSON truncado por `max_tokens` insuficiente, y el modelo asumiendo el año de su entrenamiento en carteles sin fecha explícita — todos resueltos y documentados como restricciones que no se deben relajar (ver [[fallback-modelos-ia]] y [[limpieza-artefactos-tokenizacion]]). La API de clasificación migró de Gemini directo a OpenRouter (formato OpenAI-compatible) usando el modelo gratuito `google/gemma-4-26b-a4b-it:free`.
+El acta generada es un **borrador**. Se envía por email a la secretaria, que lo completa,
+lo revisa y lo sella. El pipeline termina ahí: no publica nada en ninguna web y no toca
+git. Para ayudarla a revisarlo se genera junto al acta una guía de verificación en HTML
+con los minutos enlazados a la grabación ([[guia-de-verificacion]]).
 
-La segunda gran evolución reemplazó el cron por un [[cloudflare-worker]] que recibe el webhook de Telegram al instante y dispara el workflow de [[github-actions]] correspondiente (`agenda-scan` para clasificar, `agenda-confirm` para publicar), bajando la latencia de hasta 15 minutos a menos de 3. Todo el sistema descansa en dos decisiones de diseño deliberadas: la publicación **nunca** es automática de punta a punta — el propietario siempre confirma con SI/NO/categoría antes de que algo se escriba en `eventos.json` (ver [[confirmacion-si-no]]) — y la identidad del propietario se valida por partida doble, en el Worker y en el script Python (ver [[doble-validacion-propietario]]). El deploy a [[hostinger-deploy]] solo se dispara y solo reconstruye el sitio cuando `eventos.json` realmente cambió (en el caso de trigger `workflow_run`), gracias a un gate condicional que compara el diff del commit (ver [[gate-deploy-condicional]]) — necesario porque un push hecho con `GITHUB_TOKEN` no dispara otros workflows por sí solo.
+Su historia es instructiva. Nació en julio de 2026 dentro del repositorio de la web
+municipal `enguidanos_web`, diseñado y construido entero como pipeline automático con
+cron —espejo del sistema de agenda por Telegram que ya existía allí—, y esa automatización
+se **eliminó** tras la primera prueba real: YouTube bloquea las descargas desde las IPs de
+datacenter de GitHub Actions, y mantener cookies vivas resultaba más costoso que ejecutar
+un comando al mes ([[por-que-plenos-en-local]]). El resultado es el opuesto al de aquel
+sistema en cuanto a infraestructura, pero comparte con él la convicción de fondo: nada
+sale sin que una persona lo confirme. El 2026-09-08 el proyecto se separó a su propio
+repositorio y las actas dejaron de publicarse en la web del municipio.
 
-En 2026-08 se añadió un segundo sistema de contenido automático, independiente del anterior: [[pipeline-plenos]], que convierte la grabación de cada sesión plenaria en el borrador del **acta oficial del Ayuntamiento** (transcripción diarizada con AssemblyAI `universal-3-5-pro` —Groq `whisper-large-v3` como respaldo—, contenido con `gemini-2.5-pro` vía OpenRouter validado contra esquemas pydantic, relleno determinista de la plantilla Word oficial) para la sección Plenos. Su historia es instructiva: se diseñó y construyó entero como pipeline automático con cron —espejo del sistema de agenda— y esa automatización se **eliminó** tras la primera prueba real, porque YouTube bloquea las descargas desde las IPs de datacenter de GitHub Actions y mantener cookies vivas resultaba más costoso que ejecutar un comando al mes (ver [[por-que-plenos-en-local]]). El resultado es el opuesto al del sistema de agenda en cuanto a infraestructura, pero comparte con él la misma convicción de fondo: nada se publica sin que una persona lo confirme — aquí, además, esa persona es la secretaria municipal, que revisa, completa y sella el borrador antes de que un comando aparte (`--publicar`) lo suba a la web. Su fiabilidad descansa en dos ideas reutilizables, [[via-de-escape-en-el-esquema]] y [[bucle-generador-auditor-corrector]], a las que 2026-08-22 sumó una tercera, [[diarizacion-como-andamiaje]].
+Su fiabilidad descansa en cuatro ideas, y son lo más reutilizable que tiene:
 
-La iteración más reciente sobre contenido (2026-07-01) añadió campos opcionales al esquema de eventos — `original_text` (texto crudo de Telegram, mostrado íntegro para bandos) y `desc_short` (resumen ≤15 palabras para secciones) — con truncado y un modal (`NewsModal`) en la sección "Lo último de Enguídanos" (ver [[desc-short-truncado]]), manteniendo compatibilidad total con los eventos ya publicados. En paralelo, el propio repositorio adoptó el patrón "LLM Wiki" de Andrej Karpathy (esta wiki) para documentarse a sí mismo de forma persistente en vez de re-derivar contexto en cada sesión — ver [[patron-llm-wiki-karpathy]]. El 2026-07-22 se completó la migración de hosting a Hostinger (ver [[hostinger-deploy]]), y el 2026-07-05 se añadió un modelo de respaldo (Nemotron reasoning) a la clasificación con IA ante los 429 recurrentes de los modelos gratuitos de OpenRouter (ver [[fallback-modelos-ia]]).
+- [[bucle-generador-auditor-corrector]] — tres roles LLM y un `while` determinista que
+  verifica el acta contra la transcripción, con salida cuando el auditor se contradice a
+  sí mismo.
+- [[via-de-escape-en-el-esquema]] — el esquema nunca debe forzar al modelo a inventar; un
+  campo que no consta vale `"no consta"`, y solo hay una forma de decirlo.
+- [[diarizacion-como-andamiaje]] — la etiqueta de locutor es una voz, no una identidad:
+  cuándo puede propagarse a toda la sesión y el día que esa propagación falló.
+- [[persistir-lo-caro-antes-de-lo-fragil]] — lo que cuesta dinero se escribe en disco
+  antes de llamar a lo que puede fallar, para que ningún fallo obligue a pagar dos veces.
+
+Dos fuentes alimentan cada acta y mandan en cosas distintas: la convocatoria oficial
+manda en la forma (títulos, numeración, expedientes, tipo de sesión) y la grabación manda
+en el fondo (qué se debatió y qué se votó) — ver [[convocatoria-como-fuente]]. Un punto
+convocado del que la grabación no habla no se redacta: escribir lo previsto como si
+hubiera ocurrido sería una invención con pinta de oficial.
+
+Desde septiembre de 2026 el pipeline lo ejecuta directamente una funcionaria del
+Ayuntamiento, mediante un ejecutable empaquetado con PyInstaller que envuelve el mismo
+código sin duplicarlo ([[asistente-para-la-funcionaria]]). Eso convierte cada cambio en el
+código en un cambio que hay que reempaquetar: un `.exe` sin reconstruir hace que ella
+pruebe la versión anterior y su feedback no sirva.

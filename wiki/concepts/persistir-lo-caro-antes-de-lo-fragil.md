@@ -39,10 +39,10 @@ paso que depende de un modelo de terceros por HTTP tiene una probabilidad de fal
 se puede llevar a cero desde este lado, así que la pregunta útil no es cómo evitar el
 fallo sino **qué se pierde cuando ocurra**.
 
-La misma lógica explica por qué el pipeline está partido en dos comandos: generar y
-`--publicar` ([[pipeline-plenos]]). Y por qué `--rehacer-informe` existe: iterar sobre los
-prompts sin volver a pagar lo caro es el mismo principio aplicado al trabajo del
-desarrollador.
+La misma lógica explica por qué `--rehacer-informe` y `--rehacer-acta` existen
+([[pipeline-plenos]]): iterar sobre los prompts o sobre el formato del documento sin
+volver a pagar lo caro es el mismo principio aplicado al trabajo del desarrollador. Cada
+escalón se puede repetir sin repetir el de abajo.
 
 ## El corolario: lo caro suele ser recuperable si dejas el identificador
 

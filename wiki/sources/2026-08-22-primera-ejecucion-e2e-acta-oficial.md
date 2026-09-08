@@ -135,7 +135,7 @@ ambos siguen abiertos:
 
 ## Tests añadidos
 
-`scripts/test_plenos.py` gana 15 comprobaciones, todas sin red: que la transcripción queda
+`test_plenos.py` gana 15 comprobaciones, todas sin red: que la transcripción queda
 en disco aunque el bucle reviente, que una respuesta sin contenido produce un
 `RuntimeError` legible y no un error de pydantic, que un corte del proveedor se reintenta y
 que tras agotar los intentos el error sigue siendo legible, y que la regla de recuentos

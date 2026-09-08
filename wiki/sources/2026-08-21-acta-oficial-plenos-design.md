@@ -21,7 +21,7 @@ y solo cuando ella lo aprueba, lo completa y lo sella se publica en la web.
 
 Tres ficheros aportados por el usuario: `MODELO_ACTAS_ORDINARIA.doc` y
 `MODELO_ACTAS_EXTRAORDINARIA.doc` (plantillas vacías, Word 97 binario, convertidas a
-`.docx` y versionadas en `scripts/plantillas/`), y
+`.docx` y versionadas en `plantillas/`), y
 `20260512_Acta_Borrador Acta del 11 de febrero de 2026-1.pdf` — un acta real ya
 redactada que sirve de **patrón de estilo**, no de entregable. Ambas plantillas son
 estructuralmente idénticas (9 tablas); solo difieren en el número de expediente de
@@ -35,7 +35,7 @@ ejemplo y en que la extraordinaria añade un `Motivo:` vacío bajo el tipo de co
 | Dónde cae lo generado | `uploads/actas/<fecha>/`, nunca `public/` | Todo lo que hay en `public/` se publica al hacer commit |
 | Publicación | Comando aparte `--publicar <fecha> --pdf <ruta>` | Evita editar `plenos.json` a mano cada mes |
 | Formato del borrador | `.docx` editable | La secretaria completa el expediente, las horas y lo que falte, y sella |
-| Origen de las plantillas | Convertidas a `.docx`, guardadas en `scripts/plantillas/` | Word 97 no lo lee ninguna librería razonable de Python |
+| Origen de las plantillas | Convertidas a `.docx`, guardadas en `plantillas/` | Word 97 no lo lee ninguna librería razonable de Python |
 | Librería | `python-docx` (nueva dependencia, LOCAL — no va en `scripts/requirements.txt`, que es del bot de Telegram) | Lee las plantillas convertidas sin perder formato |
 | Ordinaria o extraordinaria | Lo decide el modelo desde la grabación; si no consta, se aborta | Elegir plantilla a ciegas produciría un encabezado equivocado en un documento que se sella |
 | Campos que no se oyen | `___________` (constante `HUECO`) | Principio anti-invención — ver [[via-de-escape-en-el-esquema]] — reforzado ahora por una persona que revisa antes de sellar |
@@ -45,7 +45,7 @@ ejemplo y en que la extraordinaria añade un `Motivo:` vacío bajo el tipo de co
 ## Arquitectura en dos pasos
 
 ```
-python -u scripts/procesar_pleno.py --url "..." | --audio ... | --rehacer-informe <fecha>
+python -u procesar_pleno.py --url "..." | --audio ... | --rehacer-informe <fecha>
     audio → ffmpeg → Groq whisper-large-v3 → transcripción
     → bucle Gemini generador→auditor→corrector → InformePleno (JSON)
     → plenos_acta.render_acta(informe) → uploads/actas/<fecha>/
@@ -56,7 +56,7 @@ python -u scripts/procesar_pleno.py --url "..." | --audio ... | --rehacer-inform
 
         ── email a la secretaria, revisión, sello (manual) ──
 
-python scripts/procesar_pleno.py --publicar <fecha> --pdf "<acta sellada>"
+python procesar_pleno.py --publicar <fecha> --pdf "<acta sellada>"
     → public/plenos/<fecha>-pleno.pdf
     → public/plenos/<fecha>-transcripcion.md
     → entrada en public/data/plenos.json
@@ -66,7 +66,7 @@ python scripts/procesar_pleno.py --publicar <fecha> --pdf "<acta sellada>"
 `entrada.json` existe para que `--publicar` no tenga que volver a pedir datos ni llamar a
 ningún modelo.
 
-## Cambios en el esquema (`scripts/plenos_informe.py`)
+## Cambios en el esquema (`plenos_informe.py`)
 
 `InformePleno` gana `tipo_sesion` (`Literal["ordinaria", "extraordinaria", "no consta"]`,
 el `"no consta"` aborta la generación del acta), `motivo_convocatoria`, `hora_inicio`,
@@ -94,7 +94,7 @@ esas fórmulas y ese tratamiento **no son afirmaciones inventadas** — el mismo
 la misma solución, que ya obligó a pasarle el listado de la corporación (ver
 [[bucle-generador-auditor-corrector]]).
 
-## Render (`scripts/plenos_acta.py`, nuevo)
+## Render (`plenos_acta.py`, nuevo)
 
 Sin LLM. Elige la plantilla según `tipo_sesion` y rellena por posición: expediente
 (siempre `HUECO`, nunca el número de ejemplo de la plantilla), tipo y motivo de
@@ -107,7 +107,7 @@ también cubre horas, minutos, días y el año.
 
 ## Pruebas y validación
 
-`scripts/test_plenos.py` cubre número→letra, reparto de puntos por `parte`, ruegos
+`test_plenos.py` cubre número→letra, reparto de puntos por `parte`, ruegos
 agrupados, frase de votación con recuentos a `null` (nunca imprime un cero no dicho — ver
 [[via-de-escape-en-el-esquema]]), elección de plantilla por `tipo_sesion` y que
 `--publicar` sobre una fecha ya presente actualiza la fila en vez de duplicarla.

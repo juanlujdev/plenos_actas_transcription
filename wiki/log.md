@@ -1,69 +1,59 @@
-# Log de operaciones
+# Registro de operaciones de la wiki
 
-Registro append-only. Una entrada por cada `ingest`/`query`/`lint` ejecutado sobre la wiki. Formato: `## [YYYY-MM-DD] operación | Título`.
+Formato: `## [YYYY-MM-DD] operación | Título`.
 
-## [2026-07-06] scaffold | Creación de la estructura inicial wiki/ + raw/
+Las entradas anteriores al 2026-08-08 y las del bot de agenda se quedaron en la wiki de
+`enguidanos_web` al separarse los proyectos el 2026-09-08.
 
-## [2026-07-06] ingest | Bot Telegram → OpenRouter → GitHub Pages: estado del sistema y errores resueltos
-## [2026-07-06] ingest | Debug: Bot Telegram → Gemini no responde como se espera
-## [2026-07-06] ingest | Agenda Automática — Plan de Implementación
-## [2026-07-06] ingest | Bot Telegram + Cloudflare Worker: Plan de Implementación
-## [2026-07-06] ingest | Bandos / desc_short / NewsModal / Gemma4 — Implementation Plan
-## [2026-07-06] ingest | LLM Wiki (patrón Karpathy) con Obsidian — Implementation Plan
-## [2026-07-06] ingest | Bot Telegram + Cloudflare Worker + GitHub Actions: diseño del flujo de publicación de eventos
-## [2026-07-06] ingest | Spec: Bandos originales, desc_short, modal en News y fix Gemma 4
-## [2026-07-06] ingest | Spec: LLM Wiki (patrón Karpathy) con Obsidian
-
-## [2026-07-06] lint | 0 hallazgos
-
-## [2026-07-29] query | Qué se hizo con Cloudflare, por qué y cómo funciona
-
-## [2026-07-30] ingest | Actualización clasificacion-ia, fallback-modelos-ia, limpieza-artefactos-tokenizacion desde código actual (commit fb75788: fallback Nemotron)
-## [2026-07-30] query | Dónde se ejecuta procesar_telegram.py (Cloudflare/GitHub/Hostinger)
-## [2026-07-30] ingest | Renombrado github-pages-deploy → hostinger-deploy; actualizado github-actions, sistema-agenda-automatica, eventos-json, gate-deploy-condicional, fuente-unica-eventos-json, overview, index para reflejar migración de hosting a Hostinger (confirmada 2026-07-22, ver memoria project_hosting)
-## [2026-07-30] ingest | Nuevo concepto por-que-cloudflare-worker: Actions no puede recibir webhooks, de ahí el Worker como endpoint HTTPS intermedio
-## [2026-07-30] query | Verificación del flujo end-to-end contra el mental model del usuario: la imagen no viaja por Cloudflare (solo file_id), y el orden es main→deploy→Hostinger, no al revés
-
-## [2026-08-07] ingest | Nuevo concepto latencia-workflow-run: diagnóstico del incidente 2026-08-06 (evento confirmado no aparecía en producción durante ~27 min por retraso de entrega del trigger workflow_run, no por caché ni fallo del bot) y solución propuesta (workflow_dispatch directo por API en vez de esperar el evento workflow_run)
 ## [2026-08-08] ingest | Pipeline de informes de plenos: spec de diseño + implementación real. Divergencia mayor documentada: la spec definía publicación automática con cron y feed RSS, pero toda esa capa se construyó, se probó y se eliminó (YouTube bloquea yt-dlp desde IPs de datacenter); el pipeline se ejecuta a mano en local. Nuevas páginas: pipeline-plenos, por-que-plenos-en-local, via-de-escape-en-el-esquema, bucle-generador-auditor-corrector
+
 
 ## [2026-08-08] ingest | Cierre del pipeline de plenos: borrado de render_markdown (código muerto, nunca se llamaba) y del CSS no-op; tests de render reescritos contra el PDF real; documentada la transcripción como prueba de auditoría (misma cadena que lee Gemini, publicada pero no enlazada); registrados los 5 pendientes para producción (claves del Ayuntamiento, migración a gemini-2.5-pro, visto bueno del funcionario, nube del PC de secretaría, audios que debe entregar el funcionario para probar el modo --audio)
 
+
 ## [2026-08-21] ingest | Acta oficial de plenos: rellenar la plantilla del Ayuntamiento
+
 ## [2026-08-21] ingest | Corrección tras revisión: wiki/overview.md y bucle-generador-auditor-corrector.md seguían describiendo el pipeline de plenos anterior al acta oficial (informe en PDF, sin flujo en dos pasos ni --publicar)
+
 
 ## [2026-08-21] query | Qué modelo de Gemini se usa para el informe de plenos y desde qué plataforma se consume
 
+
 ## [2026-08-21] ingest | Convocatoria oficial y ajustes posteriores al rediseño del acta: `--convocatoria` (PDF escaneado entero a Gemini, a los tres roles, forma vs fondo), Lorena Luján preside en funciones, fecha del CLI rellena el hueco, la web pasa de "Informes" a "Actas", el bucle narra su progreso. Nueva fuente sin spec ni plan; nuevo concepto convocatoria-como-fuente
-## [2026-08-21] lint | 3 wikilinks rotos a `github-pages-deploy` en sources/, secuela del renombrado a [[hostinger-deploy]] del 2026-07-30 que no actualizó los backlinks. Corregidos
 
 ## [2026-08-22] ingest | Plenos: del SDK de Gemini a OpenRouter con `gemini-2.5-pro`. Cambio acotado al bucle LLM de plenos (el bot de agenda no se toca): `requests` contra OpenRouter, modelo fijo en código (`GEMINI_MODEL` desaparece), `response_format` `json_schema` en modo strict con normalización del esquema pydantic, PDF de la convocatoria por el plugin file-parser en engine `native` (el default es OCR de pago). Verificado con smoke test contra la API real: salida estructurada con vías de escape respetadas, escaneo sin capa de texto leído, sin fallback de proveedor. Resuelve el pendiente 2 de producción; primer sitio del proyecto donde se paga por token. Nueva fuente sin spec ni plan
 
+
 ## [2026-08-22] ingest | Plenos: de Groq Whisper a AssemblyAI `universal-3-5-pro` con diarización. Segunda intervención del día sobre el pipeline (la primera fue el bucle LLM a OpenRouter); esta toca la transcripción. AssemblyAI pasa a principal y **Groq se conserva como respaldo a petición del usuario**: `transcribir()` elige por presencia de `ASSEMBLYAI_API_KEY`. Desaparece el troceado con ffmpeg en la rama principal (tope 5 GB / 10 h por petición). La transcripción sale como `[HH:MM:SS] Interviniente A: texto`, y un bloque `DIARIZACION` nuevo va a los tres roles del bucle explicando que la etiqueta es una voz y no una identidad. `CORPORACION` gana a Elena (secretaria) y el apodo "Chari". Webhooks descartados (payload sin contenido y hace falta endpoint público): se sondea cada 20 s. Verificado contra la API real sobre 20 min del pleno `5UETzjDRRtw`: 8 etiquetas coherentes, nombres propios correctos, ~$0,09 de coste. De paso se descubrió que `yt-dlp` estaba obsoleto y YouTube devolvía 403 desde la IP residencial — no era el bloqueo por IP de datacenter. Nueva fuente sin spec ni plan; nuevo concepto diarizacion-como-andamiaje
+
 
 ## [2026-08-22] ingest | Primera ejecución end-to-end del acta oficial
 
 Tercera intervención del día sobre el pipeline de plenos, y la que faltaba desde el rediseño: un pleno entero (`5UETzjDRRtw`, 7 de julio, 2h16m) con su convocatoria, de audio a `.docx`. **El pipeline llega al final y produce el acta**, pero hicieron falta tres ejecuciones. Las dos primeras murieron en el auditor por dos fallos de infraestructura distintos: la transcripción se escribía DESPUÉS del bucle LLM (una excepción tiraba los 0,48 $ de AssemblyAI; rescatada por `transcript_id`, que el log imprimía) y OpenRouter entrega los cortes del proveedor con HTTP 200 y el error dentro de `choices[0]` —504 *"Upstream idle timeout exceeded"* tras atascarse el modelo repitiendo el mismo razonamiento once veces—, que `_peticion` no reintentaba. Ambos arreglados con 15 tests nuevos. El bucle terminó con 3 objeciones sin resolver, las tres reales: un empate entre dos propuestas que `Votacion` no sabe representar, un recuento parcial (3 votos de 6 asistentes) presentado como final, y una atribución cruzada entre los dos concejales apellidados Martínez. Se añadió a `PROMPT_CORRECTOR` la regla de que un recuento objetado va a `null` y no a otra cifra, y quedó demostrado que está incompleta: el generador no la tiene y el parcial sigue permitido. Nuevo concepto persistir-lo-caro-antes-de-lo-fragil. Pendiente: leer el `.docx` contra la grabación, empezando por si Sergio de Fez asistió estando de baja.
 
+
 ## [2026-08-23] ingest | Reglas de recuento y decisiones sobre el acta
 
 Continuación de la ejecución e2e: se leen el `.docx` generado, la transcripción en crudo y el **acta oficial del 11 de febrero** (documento de la secretaria, ingerido como fuente propia) para decidir qué de las tres objeciones pendientes era error del modelo, del esquema o del auditor. Resultado: una era **falso positivo del auditor** (atribución correcta, índice equivocado), otra era fallo de forma con el fondo correcto —el empate del punto 1 **sí se resolvió** por voto de calidad y la periodicidad quedó en 40 días, 00:17:19— y la tercera un recuento parcial que hacía que el acta se contradijera a sí misma. De seis cambios propuestos se aplicaron tres: bloque `RECUENTOS` compartido por generador y corrector (recuento incompleto → todo a `null`, `resultado` se conserva, abstención verbalizada sí cuenta, nunca `0` de relleno) y aviso de que hay dos concejales apellidados Martínez. El usuario descartó los otros tres, incluido estructurar las votaciones entre alternativas: el acta oficial demuestra que la secretaria las narra en prosa y no tabula nada. El cambio destapó una ambigüedad vieja del esquema —dos vías de escape para "no hubo votación"— que hizo escribir al modelo la cadena `"sin votación"` donde va el objeto; arreglado con prompt + `field_validator` estrecho. Confirmado que Sergio de Fez asistió pese a la baja. Se vio en vivo el reintento del 504 y se documentó que la petición cortada llega con `cost: 0` para el usuario. 17 tests nuevos. Nuevas fuentes: 2026-08-23-reglas-de-recuento-y-decisiones-de-acta y acta-oficial-11-febrero-2026.
+
 
 ## [2026-08-29] update | Forma del acta: negrita, sangría, alineación y comillas
 
 Lectura del `.docx` del pleno del **19 de mayo** contra el acta oficial de febrero para corregir la forma. Se confirmaron cuatro defectos de formato con evidencia de estilo: ningún run en negrita en los 37 párrafos del orden del día, el primer punto centrado (`align=CENTER`, heredado del párrafo de ejemplo de la plantilla al reutilizarlo como modelo en `_poner_parrafos`), `first_line_indent=None` en todo el documento y ausencia de encabezado para RUEGOS Y PREGUNTAS. La extracción de fuentes del acta real zanjó cómo escribir el encabezado —`LiberationSerif-Bold` sobre `2º) TÍTULO.-` **dentro** del primer párrafo del punto, no como línea aparte— y fijó el criterio de comillas: **tipográficas dobles `“ ”`**, como en `“LOSILLA, MATALLANA Y OTROS”`. Los cuatro se arreglaron en `plenos_acta.py`; la unificación de comillas es determinista (`comillas()` sobre `_escribir`), no una petición al modelo. Para los defectos de TEXTO —duplicidad de la fórmula de acuerdo y redundancia— el usuario eligió **la vía de solo-prompts frente a un agente revisor final**: ver [[revisor-final-descartado]]. 16 tests nuevos.
 
+
 ## [2026-08-29] update | El bucle detecta el ping-pong del auditor
 
 Primera ejecución completa con los prompts nuevos (pleno del 19 de mayo): 8 llamadas, 22 minutos, 3 vueltas agotadas y **1 objeción sin resolver que era el auditor objetando su propia corrección** — pidió `rechazado` en la auditoría 1 y `aprobado` en la 4 sobre la misma votación, y el acta se quedó afirmando un resultado que la grabación no declara. Diagnóstico: el auditor **muestrea, no verifica**, así que la condición de salida ("una auditoría completa devuelve lista vacía") es inalcanzable sobre 148.665 caracteres. Se descartó rediseñarlo a una sola auditoría canónica: de las tres correcciones reales de contenido de esa ejecución, **dos nacieron en las auditorías 2 y 3**, que ese diseño elimina. Implementada la etapa 1: historial por campo (`_aplanar`), detección de oscilación A→B→A, escape para las disputas que siguen abiertas al agotar las vueltas (`_AMBIGUOS`: `votacion.resultado` → `"no consta"`, reimpuesto en cada vuelta), salida temprana si una corrección no cambia nada, y log por vuelta. Un test cazó un bug de la primera versión: A→A se contaba como oscilación. La etapa 2 (corrector de parches con `json_path`) queda sin hacer por el modo `strict` de OpenRouter. De paso, el cierre de `procesar_pleno` sale ahora como SUCCESS / WARNING / ERROR con color solo si hay terminal. 16 tests nuevos. Detalle en [[bucle-generador-auditor-corrector]].
 
+
 ## [2026-09-04] ingest | Asistente de actas para la funcionaria
 
-Nuevo `scripts/asistente_plenos.py`: envuelve el pipeline de plenos en un menú guiado
+Nuevo `asistente_plenos.py`: envuelve el pipeline de plenos en un menú guiado
 para que la funcionaria del Ayuntamiento genere el borrador del acta sin terminal ni
 jerga técnica, sin duplicar la lógica del pipeline (`procesar_pleno`, `plenos_informe`,
 `plenos_acta` no se tocan). Se empaqueta con PyInstaller `--onefile`
-(`scripts/construir_exe.ps1`); las claves de API viven en
+(`construir_exe.ps1`); las claves de API viven en
 `Configuración (no tocar)/configuracion.env` en vez de en variables de entorno del
 sistema, para poder cambiarlas a las cuentas del Ayuntamiento con el Bloc de notas sin
 reconstruir el ejecutable; `yt-dlp.exe` viaja aparte del `.exe` y se autoactualiza
@@ -81,9 +71,12 @@ que es lo único que aporta el dato que faltaba. Nueva página
 `wiki/concepts/asistente-para-la-funcionaria.md`; actualizada `wiki/entities/pipeline-plenos.md`
 (tabla de ficheros, sección nueva, fallo marcado como resuelto en la práctica).
 
+
 ## [2026-09-07] query | La diarización fundió dos personas en una etiqueta
 
+
 ## [2026-09-07] ingest | La guía de verificación y las lecciones de la primera ejecución real
+
 
 
 ## [2026-09-07] query | Por qué la guía no se regeneró en el pleno del 3 de septiembre
@@ -100,6 +93,7 @@ porque no depende de la guía) y un nombre alternativo con la hora cuando el HTM
 bloqueado. De paso, `_ruta_legible` traduce ya `identificacion_locutores[n]` →
 `Mapa de voces — etiqueta D`, que era la única de las tres objeciones que seguía saliendo
 cruda. Actualizada `wiki/concepts/guia-de-verificacion.md`.
+
 
 ## [2026-09-07] query | Por qué el auditor objetó una votación que el acta había resuelto bien
 
@@ -144,6 +138,7 @@ Sin cambios de código: el usuario decidió no tocar nada de esto. Los cuatro ar
 (regla de mayoría en el auditor, render sin cautela, validador de coherencia acuerdo/resultado
 y varias votaciones por punto) quedan listados en `wiki/entities/pipeline-plenos.md`.
 
+
 ## [2026-09-07] ingest | Sesión del 2026-09-07: guía, forense de la votación y literal de escape
 
 Nueva página `wiki/sources/2026-09-07-guia-forense-y-literal-de-escape.md` con la sesión
@@ -169,13 +164,14 @@ para decir "no consta" y el modelo las intercambia), `wiki/concepts/bucle-genera
 `wiki/entities/pipeline-plenos.md` (fallo conocido nuevo con los cuatro arreglos pendientes y
 su acoplamiento) y `wiki/index.md`.
 
+
 ## [2026-09-07] cambio | Observaciones que piden constar, y los asuntos fuera del orden del día
 
 Respuesta de la secretaria del Ayuntamiento sobre el borrador del pleno de septiembre: revisa
 ella el acta, no necesita que la IA añada los puntos fuera del orden del día (los sintetiza a
 mano si importan), y añade a mano las observaciones que los concejales piden que consten.
 
-Dos cambios en `scripts/plenos_informe.py` y uno en `scripts/plenos_guia.py`: la **regla 16
+Dos cambios en `plenos_informe.py` y uno en `plenos_guia.py`: la **regla 16
 bis** exceptúa de la poda de la regla 16 lo que un interviniente pide expresamente que conste
 (una o dos frases, atribuidas); la **regla 16 ter** y el campo `asuntos_no_convocados` recogen
 los temas paralelos **fuera del acta**, y solo la guía HTML los pinta con su minuto enlazado.
@@ -185,6 +181,7 @@ reclamando que se redacten.
 Actualizadas `wiki/entities/pipeline-plenos.md` (dos gotchas) y
 `wiki/concepts/guia-de-verificacion.md` (sección nueva: lo que no cabe en el acta pero sí en
 la guía).
+
 
 ## [2026-09-08] corrección | La presidenta de la Asociación de Jubilados es una concejala
 
@@ -199,4 +196,19 @@ Corregido en `plenos_informe.CORPORACION` (los tres roles lo reciben) y en
 `wiki/concepts/diarizacion-como-andamiaje.md`, que contaba el fallo del 3 de septiembre con
 la identidad equivocada.
 
-## [2026-09-08] query+fix | KeyError choices en classify_with_gemini: OpenRouter 200 con error; fallback arreglado y mensajes de error legibles ([[clasificacion-ia]], [[fallback-modelos-ia]])
+
+## [2026-09-08] separación | El pipeline de plenos se independiza de `enguidanos_web`
+
+El proyecto pasa a `juanlujdev/plenos_actas_transcription` con su historia (32 commits
+filtrados con `git-filter-repo`). Se elimina `--publicar`: las actas dejan de publicarse
+en la web del Ayuntamiento, y con ellas `nueva_entrada_indice`, `entrada_publicada` y las
+rutas a `public/`. El producto es el borrador `.docx` que revisa y sella la secretaria.
+
+En la wiki: las 19 páginas de plenos viajan con su historia; `fallback-modelos-ia` se
+reescribe quedándose solo con la mitad que aplica aquí (la del bot se queda allí);
+`index.md`, `log.md` y `overview.md` se podan; los wikilinks a páginas del bot
+(`hostinger-deploy`, `clasificacion-ia`, `github-actions`, `gate-deploy-condicional`)
+pasan a texto plano. Las rutas `scripts/*.py` se aplanan a la
+raíz del repositorio nuevo.
+
+Ver `docs/superpowers/specs/2026-09-08-separacion-repo-plenos-design.md`.

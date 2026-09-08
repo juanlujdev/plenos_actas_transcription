@@ -50,8 +50,8 @@ Se llegó a preparar (perfil de Chrome aislado, cuenta secundaria, exportación 
 
 ## Consecuencias en el resto del sistema
 
-`deploy.yml` volvió exactamente a su estado anterior: sin el workflow de plenos en su lista de `workflow_run` y con el gate mirando solo `eventos.json` (ver [[gate-deploy-condicional]]). El pipeline de plenos **no participa en ningún disparo automático de deploy**: el commit manual a `main` dispara el deploy como cualquier otro push.
+El workflow de despliegue de la web volvió exactamente a su estado anterior, sin el workflow de plenos en su lista de disparadores. El pipeline de plenos **no participa en ningún despliegue automático** — y desde la separación del proyecto (2026-09-08) no despliega nada en absoluto.
 
 ## Relacionado
 
-[[pipeline-plenos]], [[2026-07-31-plenos-youtube-pipeline-design]], [[github-actions]], [[gate-deploy-condicional]], [[hostinger-deploy]]
+[[pipeline-plenos]], [[2026-07-31-plenos-youtube-pipeline-design]], [[asistente-para-la-funcionaria]]

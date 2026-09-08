@@ -20,7 +20,7 @@ apoyándose en ese último paso humano, y ese paso era el más caro de todos.
 ## Qué es
 
 Un fichero `<fecha>-guia-de-verificacion.html` que se genera junto al acta, en la misma
-carpeta, y se abre con doble clic en el navegador. Lo compone `scripts/plenos_guia.py`
+carpeta, y se abre con doble clic en el navegador. Lo compone `plenos_guia.py`
 **sin llamar a ningún modelo**: es un render determinista sobre el `informe.json` ya
 guardado, igual que `plenos_acta.py` lo es para el `.docx`. Coste cero y regenerable tantas
 veces como haga falta.

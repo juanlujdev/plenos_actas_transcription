@@ -37,7 +37,7 @@ pipeline son y siguen siendo cosa de Groq.
 
 ## Qué cambió en el código
 
-`scripts/procesar_pleno.py`:
+`procesar_pleno.py`:
 
 | Antes | Ahora |
 |---|---|
@@ -75,7 +75,7 @@ Cuatro detalles de la API que la documentación no pone en el mismo sitio:
    "eh", "mmm", "hmm" salvo que se pidan. Un acta no los recoge, así que el
    comportamiento por defecto es justo el que se quiere.
 
-`scripts/plenos_informe.py`:
+`plenos_informe.py`:
 
 - Nuevo bloque **`DIARIZACION`**, inyectado en los **tres** prompts —
   [[diarizacion-como-andamiaje]] explica por qué el auditor también lo necesita.
@@ -122,7 +122,7 @@ Presidente, don Sergio de Fez Cerezuela"), y a otra concejala la llaman "Chari" 
 Coste del test: 26 minutos de audio, ~$0,09. Copia de la prueba en
 `uploads/prueba-assemblyai-20min.md` (gitignorado).
 
-Tests offline añadidos a `scripts/test_plenos.py`: formato de `formatear_utterances`
+Tests offline añadidos a `test_plenos.py`: formato de `formatear_utterances`
 (incluida la conversión de ms), topes de `custom_spelling` y `keyterms_prompt`, y un
 `requests` falso que fija el cuerpo de la petición y el sondeo hasta `completed` — es lo
 que impide que el anidamiento de `speaker_options` o el array `speech_models` se rompan
