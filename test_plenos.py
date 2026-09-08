@@ -462,89 +462,6 @@ test("espera: retry-after no numérico cae al backoff",
      _espera_tras_error(_RespuestaFalsa({"retry-after": "Wed, 21 Oct 2026 07:28:00 GMT"}), 1), 240)
 
 
-# ── índice web ────────────────────────────────────────────────────────────────
-print("── índice plenos.json ────────────────────────────────────────────────")
-
-from procesar_pleno import nueva_entrada_indice
-
-_e1 = {"video_id": "v1", "fecha": "2026-05-03", "titulo": "Pleno mayo",
-       "video_url": "https://youtu.be/v1", "pdf": "plenos/2026-05-03-pleno.pdf",
-       "transcripcion": "plenos/2026-05-03-transcripcion.md", "resumen_corto": "..."}
-_e2 = {"video_id": "v2", "fecha": "2026-06-26", "titulo": "Pleno junio",
-       "video_url": "https://youtu.be/v2", "pdf": "plenos/2026-06-26-pleno.pdf",
-       "transcripcion": "plenos/2026-06-26-transcripcion.md", "resumen_corto": "..."}
-
-idx = nueva_entrada_indice({"plenos": []}, _e1)
-idx = nueva_entrada_indice(idx, _e2)
-test("índice: dos entradas", len(idx["plenos"]), 2)
-test("índice: ordenado fecha desc", idx["plenos"][0]["fecha"], "2026-06-26")
-
-_e2bis = dict(_e2, resumen_corto="corregido")
-idx = nueva_entrada_indice(idx, _e2bis)
-test("índice: reprocesar reemplaza, no duplica", len(idx["plenos"]), 2)
-test("índice: entrada reemplazada", idx["plenos"][0]["resumen_corto"], "corregido")
-
-_e3 = {"video_id": None, "fecha": "2026-04-01", "titulo": "Pleno audio", "video_url": None,
-       "pdf": "plenos/2026-04-01-pleno.pdf", "transcripcion": "plenos/2026-04-01-transcripcion.md",
-       "resumen_corto": "..."}
-idx = nueva_entrada_indice(idx, _e3)
-test("índice: entrada sin vídeo admitida", idx["plenos"][2]["video_id"], None)
-
-from procesar_pleno import entrada_publicada
-
-_generada = {"video_id": "v9", "fecha": "2026-07-07", "titulo": "Pleno extraordinario",
-             "video_url": "https://youtu.be/v9", "resumen_corto": "..."}
-_publicada = entrada_publicada(_generada, "2026-07-07")
-test("publicar: ruta del pdf", _publicada["pdf"], "plenos/2026-07-07-pleno.pdf")
-test("publicar: ruta de la transcripción",
-     _publicada["transcripcion"], "plenos/2026-07-07-transcripcion.md")
-test("publicar: conserva el resumen corto", _publicada["resumen_corto"], "...")
-test("publicar: no muta la entrada original", "pdf" in _generada, False)
-
-# Publicar dos veces el mismo pleno actualiza la fila, no la duplica.
-_idx = nueva_entrada_indice({"plenos": []}, _publicada)
-_idx = nueva_entrada_indice(_idx, entrada_publicada(dict(_generada, resumen_corto="revisado"),
-                                                    "2026-07-07"))
-test("publicar: republicar no duplica", len(_idx["plenos"]), 1)
-test("publicar: republicar actualiza", _idx["plenos"][0]["resumen_corto"], "revisado")
-
-# publicar() debe leer todo lo que pueda fallar ANTES de escribir en public/:
-# si entrada.json está corrupto, no puede quedar un PDF copiado sin su fila en
-# el índice. Se usa un directorio temporal del sistema (nunca uploads/ ni
-# public/ del repo) y se restauran las rutas del módulo al terminar.
-import json as _json_publicar
-import tempfile as _tempfile_publicar
-from pathlib import Path as _Path_publicar
-import procesar_pleno as _pp
-
-with _tempfile_publicar.TemporaryDirectory() as _tmp_pub:
-    _tmp_pub = _Path_publicar(_tmp_pub)
-    _borrador_falso = _tmp_pub / "borrador" / "2026-09-01"
-    _borrador_falso.mkdir(parents=True)
-    (_borrador_falso / "entrada.json").write_text("{esto no es json", encoding="utf-8")
-    (_borrador_falso / "2026-09-01-transcripcion.md").write_text("texto", encoding="utf-8")
-    _pdf_sellado_falso = _tmp_pub / "sellado.pdf"
-    _pdf_sellado_falso.write_bytes(b"%PDF-fake")
-    _salida_falsa = _tmp_pub / "public_plenos"
-
-    _bd0, _sd0, _ip0 = _pp.BORRADOR_DIR, _pp.SALIDA_DIR, _pp.INDICE_PATH
-    _pp.BORRADOR_DIR = _tmp_pub / "borrador"
-    _pp.SALIDA_DIR = _salida_falsa
-    _pp.INDICE_PATH = _tmp_pub / "public_data" / "plenos.json"
-    try:
-        _lanzo_decode_error = False
-        try:
-            _pp.publicar("2026-09-01", str(_pdf_sellado_falso))
-        except _json_publicar.JSONDecodeError:
-            _lanzo_decode_error = True
-        test("publicar: entrada.json corrupto aborta antes de escribir",
-             _lanzo_decode_error, True)
-        test("publicar: no deja el pdf publicado a medias",
-             (_salida_falsa / "2026-09-01-pleno.pdf").exists(), False)
-    finally:
-        _pp.BORRADOR_DIR, _pp.SALIDA_DIR, _pp.INDICE_PATH = _bd0, _sd0, _ip0
-
-
 # ── acta: números en letra ────────────────────────────────────────────────────────────────────
 print("── acta: números en letra ────────────────────────────────────────────")
 
@@ -1661,8 +1578,6 @@ test("la subida cortada se traduce en un aviso de que se reintenta sola",
 test("un 429 también",
      _ap.traducir("     OpenRouter devolvió 429; esperando 4 min y reintentando...") is not None,
      True)
-test("la línea del comando de publicar no se enseña",
-     _ap.traducir("  python scripts/procesar_pleno.py --publicar 2026-07-07 --pdf ..."), None)
 test("una línea cualquiera del pipeline no se enseña",
      _ap.traducir("       3º) APROBACIÓN DE LA ORDENANZA FISCAL"), None)
 test("al rehacer no se numeran los pasos",

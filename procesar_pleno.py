@@ -6,7 +6,7 @@ Modos:
     --url <youtube>              descarga el audio del vídeo y lo procesa
     --audio <fichero> --fecha YYYY-MM-DD --titulo "..."   procesa un audio local
     --rehacer-informe <fecha>    rehace el acta de un pleno ya transcrito (no vuelve a transcribir)
-    --publicar <fecha> --pdf <ruta>   publica en la web el acta ya sellada
+    --rehacer-acta <fecha>       recompone el .docx desde el informe.json guardado (sin LLM)
 
 Opcional en todos los modos de generación:
     --convocatoria <pdf>         el orden del día publicado antes de la sesión
@@ -16,8 +16,8 @@ respaldo) → bucle Gemini (plenos_informe) → acta .docx (plenos_acta) →
 uploads/actas/<fecha>/.
 
 El acta generada es un BORRADOR: se envía por email a la secretaria del
-Ayuntamiento, que la revisa, la completa y la sella. Solo cuando devuelve el PDF
-sellado se ejecuta --publicar, que es lo único que escribe en public/.
+Ayuntamiento, que la revisa, la completa y la sella. El pipeline termina ahí:
+nada de lo que genera se publica en ninguna web.
 
 Se ejecuta en local a propósito: YouTube bloquea las descargas desde IPs de
 datacenter (GitHub Actions) con "confirm you're not a bot", y los plenos son
@@ -29,7 +29,6 @@ import io
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -45,15 +44,13 @@ from plenos_informe import Problema, normalizar_fecha
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-RAIZ = Path(__file__).resolve().parent.parent
-INDICE_PATH = RAIZ / "public" / "data" / "plenos.json"
-SALIDA_DIR = RAIZ / "public" / "plenos"
+RAIZ = Path(__file__).resolve().parent
 BORRADOR_DIR = RAIZ / "uploads" / "actas"
 
 
 def dir_borrador(fecha: str) -> Path:
-    """Carpeta de trabajo de un pleno. uploads/ está gitignorado: lo que se
-    genera automáticamente no puede caer en public/, que se publica al commitear.
+    """Carpeta de trabajo de un pleno. uploads/ está gitignorado: el borrador de
+    un acta no revisada no tiene por qué acabar versionado en el repositorio.
 
     ACTAS_DIR manda cuando está definida: el ejecutable que usa la funcionaria vive
     en el PC del Ayuntamiento, donde no hay repo y por tanto no hay uploads/actas.
@@ -430,27 +427,8 @@ def transcribir(ruta_audio: str, tmp: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Índice web y orquestación
+# Orquestación
 # ══════════════════════════════════════════════════════════════════════════════
-
-def nueva_entrada_indice(indice: dict, entrada: dict) -> dict:
-    """Inserta la entrada en el índice (reemplaza si ya existe ese pleno) y
-    ordena por fecha descendente. Pura: no toca disco."""
-    plenos = [p for p in indice["plenos"]
-              if not (p.get("video_id") == entrada.get("video_id")
-                      and p["fecha"] == entrada["fecha"])]
-    plenos.append(entrada)
-    plenos.sort(key=lambda p: p["fecha"], reverse=True)
-    return {"plenos": plenos}
-
-
-def entrada_publicada(entrada: dict, fecha: str) -> dict:
-    """Añade a la entrada generada las rutas públicas del acta y la transcripción.
-    Pura: no toca disco y no muta la entrada recibida."""
-    return dict(entrada,
-                pdf=f"plenos/{fecha}-pleno.pdf",
-                transcripcion=f"plenos/{fecha}-transcripcion.md")
-
 
 def _cargar_json(path: Path, defecto: dict) -> dict:
     if path.exists():
@@ -656,8 +634,6 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
             print(f"  • [{p.seccion}] {p.afirmacion_dudosa}\n    motivo: {p.motivo}")
 
     print("\nRevisa el acta contra la grabación y envíala a la secretaria.")
-    print(f"Cuando devuelva el PDF sellado:\n"
-          f'  python scripts/procesar_pleno.py --publicar {fecha} --pdf "<ruta del PDF>"')
 
     # El cierre es lo último que queda en pantalla tras 20 minutos de log: tiene que
     # decir en una línea si esto se puede enviar a la secretaria o no.
@@ -711,16 +687,10 @@ def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None) -> "Result
     borrador = dir_borrador(fecha)
     entrada = _cargar_json(borrador / "entrada.json", {})
     if not entrada:
-        # Plenos anteriores a los dos pasos: su entrada vive en el índice publicado.
-        entrada = next((p for p in _cargar_json(INDICE_PATH, {"plenos": []})["plenos"]
-                        if p["fecha"] == fecha), None)
-    if not entrada:
-        print(f"No hay ningún pleno con fecha {fecha} en {borrador} ni en {INDICE_PATH}")
+        print(f"No hay ningún pleno con fecha {fecha} en {borrador}")
         return None
 
     ruta = borrador / f"{fecha}-transcripcion.md"
-    if not ruta.exists():
-        ruta = SALIDA_DIR / f"{fecha}-transcripcion.md"
     if not ruta.exists():
         print(f"Falta la transcripción de {fecha}")
         return None
@@ -796,43 +766,6 @@ def _rehacer_acta(fecha: str) -> int:
     return 0
 
 
-def publicar(fecha: str, ruta_pdf: str) -> int:
-    """Publica en la web el acta ya revisada y sellada por la secretaria.
-    Es el único punto del pipeline que escribe en public/."""
-    origen_pdf = Path(ruta_pdf)
-    if not origen_pdf.exists():
-        print(f"No existe el PDF sellado: {origen_pdf}")
-        return 1
-
-    borrador = dir_borrador(fecha)
-    ruta_entrada = borrador / "entrada.json"
-    if not ruta_entrada.exists():
-        print(f"Falta {ruta_entrada}: genera primero el pleno de esa fecha.")
-        return 1
-
-    ruta_md = borrador / f"{fecha}-transcripcion.md"
-    if not ruta_md.exists():
-        print(f"Falta la transcripción {ruta_md}: genera primero el pleno de esa fecha.")
-        return 1
-
-    # Todo lo que puede fallar leyendo va antes de tocar public/: si entrada.json
-    # está corrupto, JSONDecodeError debe abortar sin haber copiado nada, para no
-    # dejar el PDF publicado sin su fila en el índice.
-    entrada = entrada_publicada(_cargar_json(ruta_entrada, {}), fecha)
-    indice = nueva_entrada_indice(_cargar_json(INDICE_PATH, {"plenos": []}), entrada)
-
-    SALIDA_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(origen_pdf, SALIDA_DIR / f"{fecha}-pleno.pdf")
-    shutil.copy2(ruta_md, SALIDA_DIR / f"{fecha}-transcripcion.md")
-    _guardar_json(INDICE_PATH, indice)
-
-    print(f"Acta publicada:  {SALIDA_DIR / f'{fecha}-pleno.pdf'}")
-    print(f"Transcripción:   {SALIDA_DIR / f'{fecha}-transcripcion.md'}")
-    print(f"Índice:          {INDICE_PATH}")
-    print("\nHaz commit de public/ para que el deploy lo suba.")
-    return 0
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pipeline del acta de plenos")
     parser.add_argument("--url", help="URL de un vídeo de YouTube")
@@ -844,20 +777,11 @@ def main() -> int:
     parser.add_argument("--rehacer-acta", metavar="YYYY-MM-DD",
                         help="Vuelve a componer el .docx desde el informe.json guardado: "
                              "sin LLM y sin coste. Para iterar el formato del acta")
-    parser.add_argument("--publicar", metavar="YYYY-MM-DD",
-                        help="Publica en la web el acta sellada de ese pleno")
-    parser.add_argument("--pdf", help="Ruta del PDF sellado (con --publicar)")
     parser.add_argument("--convocatoria", metavar="PDF",
                         help="PDF del orden del día publicado antes de la sesión: "
                              "de ahí salen los títulos exactos, la numeración y los "
                              "expedientes. Puede ser un escaneo")
     args = parser.parse_args()
-
-    if args.publicar:
-        if not args.pdf:
-            print("--publicar requiere --pdf con la ruta del PDF sellado")
-            return 1
-        return publicar(args.publicar, args.pdf)
 
     if args.rehacer_acta:
         return _rehacer_acta(args.rehacer_acta)
