@@ -198,3 +198,5 @@ usaba ese mismo cargo como ejemplo de cómo nombrar a alguien del **público**.
 Corregido en `plenos_informe.CORPORACION` (los tres roles lo reciben) y en
 `wiki/concepts/diarizacion-como-andamiaje.md`, que contaba el fallo del 3 de septiembre con
 la identidad equivocada.
+
+## [2026-09-08] query+fix | KeyError choices en classify_with_gemini: OpenRouter 200 con error; fallback arreglado y mensajes de error legibles ([[clasificacion-ia]], [[fallback-modelos-ia]])
