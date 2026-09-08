@@ -1,0 +1,29 @@
+# Borradores de actas y material de trabajo
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller — artefactos y producto final del .exe
+build/
+entrega/
+*.spec
+
+# Claves y registros locales del asistente de la funcionaria
+Configuración (no tocar)/
+
+# Claude Code y documentos de diseño locales
+.claude/
+docs/
+.mcp.json
+
+# Obsidian — estado de sesión local (grafo, layout), no contenido de la wiki
+.obsidian/graph.json
+.obsidian/workspace.json
+
+# Sistema operativo
+Thumbs.db
+Desktop.ini
+.DS_Store

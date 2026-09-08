@@ -1,0 +1,4 @@
+pydantic
+python-docx
+requests
+yt-dlp
