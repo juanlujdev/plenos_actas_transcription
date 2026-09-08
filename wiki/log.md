@@ -25,3 +25,5 @@ Registro append-only. Una entrada por cada `ingest`/`query`/`lint` ejecutado sob
 ## [2026-07-30] query | Verificación del flujo end-to-end contra el mental model del usuario: la imagen no viaja por Cloudflare (solo file_id), y el orden es main→deploy→Hostinger, no al revés
 
 ## [2026-08-07] ingest | Nuevo concepto latencia-workflow-run: diagnóstico del incidente 2026-08-06 (evento confirmado no aparecía en producción durante ~27 min por retraso de entrega del trigger workflow_run, no por caché ni fallo del bot) y solución propuesta (workflow_dispatch directo por API en vez de esperar el evento workflow_run)
+
+## [2026-09-08] query+fix | KeyError choices en classify_with_gemini: OpenRouter 200 con error; fallback arreglado y mensajes de error legibles ([[clasificacion-ia]], [[fallback-modelos-ia]])
