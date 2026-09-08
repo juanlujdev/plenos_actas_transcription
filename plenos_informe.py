@@ -313,7 +313,14 @@ acertar el tratamiento —ver regla 8—):
   NO es Alcaldesa ni Alcaldesa en funciones y NUNCA se la nombra así en el acta: es
   {PRESIDENCIA['tratamiento']}, o Dª Lorena Luján Chujfi.
 - Mª Rosario Cerdán Pérez — Concejala, equipo de gobierno (PSOE). En la sesión se
-  dirigen a ella como "Chari": es la misma persona.
+  dirigen a ella como "Chari": es la misma persona. Es ADEMÁS la presidenta de la
+  Asociación de Jubilados, y en el turno de ruegos interviene sobre asuntos de esa
+  asociación. Una voz que dice presidir la Asociación de Jubilados es ELLA, una
+  concejala: no es público asistente. En el acta se la nombra siempre "Dª Mª Rosario
+  Cerdán Pérez", y si ella misma invoca esa condición puede hacerse constar ("Dª Mª
+  Rosario Cerdán Pérez, en su condición de presidenta de la Asociación de Jubilados,
+  ruega que..."). No confundirla con los socios de esa asociación que asisten como
+  público y también hablan de sus asuntos: esos sí son vecinos.
 - Mario Cerdán Ochoa — Concejal, equipo de gobierno (PSOE)
 - Joaquín Martínez Luján — Concejal, oposición (PP)
 - Pedro José Martínez Martínez — Concejal, oposición (PP)
@@ -340,8 +347,8 @@ por mucho que una etiqueta de locutor no encaje con ninguno de los nombres de ar
 - NO son miembros de la Corporación: no votan, no se cuentan en ningún recuento (ver
   RECUENTOS DE VOTOS), y nunca van en `asistentes` ni en `ausentes` — esas dos listas
   son solo de la Corporación.
-- Se les nombra por el CARGO o la condición con la que se presentan ("la presidenta
-  de la Asociación de Jubilados", "un representante de la asociación de vecinos"); si
+- Se les nombra por el CARGO o la condición con la que se presentan ("el presidente
+  de la asociación de vecinos", "un representante de la asociación de cazadores"); si
   no se identifican así, "un vecino asistente" o "una vecina asistente", según se
   aprecie. NUNCA con nombre y apellidos, aunque se digan en la grabación: el acta es
   un documento público, y el nombre de un particular no se recoge si basta con su

@@ -185,3 +185,16 @@ reclamando que se redacten.
 Actualizadas `wiki/entities/pipeline-plenos.md` (dos gotchas) y
 `wiki/concepts/guia-de-verificacion.md` (sección nueva: lo que no cabe en el acta pero sí en
 la guía).
+
+## [2026-09-08] corrección | La presidenta de la Asociación de Jubilados es una concejala
+
+Primera corrida completa con las reglas 16 bis y 16 ter (pleno del 3 de septiembre de 2026).
+El acta volvió a atribuir a *"la presidenta de la Asociación de Jubilados"*, sin nombre, unos
+ruegos que formula **Mª Rosario Cerdán Pérez, "Chari", concejala** — que preside esa
+asociación. La grabación lo dice (*"Ahora te voy a hacer una pregunta, Chari. ¿Por qué no has
+pedido la subvención… para asociaciones de jubilados?"*), pero `CORPORACION` no, y encima
+usaba ese mismo cargo como ejemplo de cómo nombrar a alguien del **público**.
+
+Corregido en `plenos_informe.CORPORACION` (los tres roles lo reciben) y en
+`wiki/concepts/diarizacion-como-andamiaje.md`, que contaba el fallo del 3 de septiembre con
+la identidad equivocada.

@@ -79,13 +79,29 @@ Este apartado describía un riesgo teórico. **Ocurrió**, y de la forma exacta 
 
 El acta generada atribuyó a *"La Sra. Teniente de Alcalde, Dª Lorena Luján Chujfi"* unos
 ruegos sobre la limpieza de los baños del hogar del jubilado. Los formuló **la presidenta de
-la Asociación de Jubilados**, una vecina asistente. La etiqueta `Interviniente B` contenía a
-las dos:
+la Asociación de Jubilados**. La etiqueta `Interviniente B` contenía a las dos:
 
 ```
 [00:00:32] B: Damos comienzo al Pleno ordinario del 30 de septiembre...   ← quien preside
-[03:00:59] B: ...que llevo como presidenta de la asociación de jubilados  ← una vecina
+[03:00:59] B: ...que llevo como presidenta de la asociación de jubilados  ← otra persona
 ```
+
+**Corrección del 2026-09-08: esa presidenta NO era una vecina asistente.** Es
+**Mª Rosario Cerdán Pérez, "Chari", concejala del equipo de gobierno**, que preside además
+la Asociación de Jubilados. Lo dice la propia grabación tres minutos después —
+*"[03:03:39] Ahora te voy a hacer una pregunta, Chari. ¿Por qué no has pedido la subvención
+de la Diputación para asociaciones de jubilados?"* — y lo confirmó el desarrollador. La
+etiqueta fundía a **dos concejalas**, no a una concejala y una vecina.
+
+El diagnóstico de la mezcla seguía siendo correcto; la identidad de la segunda voz, no. Y
+esa confusión no era casual: el bloque PÚBLICO ASISTENTE de `CORPORACION` ponía como ejemplo
+de cómo nombrar a alguien del público, literalmente, *"la presidenta de la Asociación de
+Jubilados"* — el único cargo del pueblo que lo ostenta una concejala. En la corrida del
+2026-09-08 el acta volvió a atribuir esos ruegos a ese cargo, sin nombre, como si fueran de
+una vecina. Desde entonces `CORPORACION` dice quién es (y el ejemplo del público es otro),
+así que la grabación y el listado ya no se contradicen. Los socios de la asociación que
+asisten como público y hablan de sus mismos asuntos **sí** son vecinos: la regla distingue a
+la presidenta de sus socios.
 
 Toda la transcripción de ese pleno —3h29, siete concejales, la secretaria y varios vecinos—
 salió con **6 etiquetas**.

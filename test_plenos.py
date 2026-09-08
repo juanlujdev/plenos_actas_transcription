@@ -2631,6 +2631,16 @@ finally:
     _pp.BORRADOR_DIR = _bd_reh
 
 
+# La presidenta de la Asociación de Jubilados es una concejala, no público: sin este
+# dato el acta del 3 de septiembre de 2026 atribuyó sus ruegos a "la presidenta de la
+# Asociación de Jubilados", sin su nombre, como si fuera una vecina asistente.
+test("CORPORACION: dice que la presidenta de los jubilados es la concejala Chari",
+     "Asociación de Jubilados" in _pi.CORPORACION
+     and "Mª Rosario Cerdán Pérez" in _pi.CORPORACION, True)
+test("CORPORACION: el ejemplo de cómo nombrar al público ya no usa ese cargo",
+     "de la Asociación de Jubilados\"" in _pi.CORPORACION, False)
+
+
 # ── asuntos fuera del orden del día (regla 16 ter) ────────────────────────────
 # Van solo a la guía, nunca al acta: la secretaria decide si los recoge y dónde.
 _informe_asuntos = InformePleno.model_validate(dict(

@@ -305,14 +305,13 @@ def transcribir_assemblyai(ruta: str) -> str:
         # Los dos son LÍMITES DUROS, no pistas (doc de AssemblyAI): por debajo del mínimo
         # el modelo parte voces hasta alcanzarlo, y por encima del máximo "the additional
         # speakers are merged into existing labels". Por eso el mínimo NO se baja a la
-        # ligera: empuja a separar, que es el lado seguro. El suelo real de un pleno son
-        # unas 5 voces (4 concejales y la secretaria en la sesión más floja), así que ahí
-        # se pone; bajarlo más solo le daría permiso a la API para agrupar de menos.
-        # Los números salen de la corporación real: seis concejales, la delegada y quien
-        # preside son ocho, y aunque falte alguno nunca bajan de seis; con los vecinos que
-        # asisten, nunca pasan de doce. Mínimo en ese suelo de seis; máximo con margen por
-        # encima del techo de doce, porque pasarse de máximo no cuesta nada y quedarse
-        # corto fusiona.
+        # ligera: empuja a separar, que es el lado seguro. Los números salen de la
+        # corporación real: seis concejales, la delegada y quien preside son ocho, y
+        # aunque falte alguno NUNCA bajan de seis; con los vecinos que asisten e
+        # intervienen, nunca pasan de doce. De ahí el mínimo en ese suelo de seis, y el
+        # máximo con margen por encima del techo de doce: pasarse de máximo no cuesta
+        # nada (una etiqueta de más no se usa) y quedarse corto fusiona dos personas en
+        # una etiqueta, que es el fallo del pleno del 3 de septiembre de 2026.
         "speaker_options": {"min_speakers_expected": 6, "max_speakers_expected": 15},
         "prompt": AAI_PROMPT,
         "keyterms_prompt": AAI_KEYTERMS,
