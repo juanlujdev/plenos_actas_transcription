@@ -1,8 +1,8 @@
 ﻿# Construye la carpeta que se copia al PC del Ayuntamiento.
-# Uso:  powershell -ExecutionPolicy Bypass -File scripts\construir_exe.ps1
+# Uso:  powershell -ExecutionPolicy Bypass -File .\construir_exe.ps1
 $ErrorActionPreference = "Stop"
 
-$raiz    = Split-Path -Parent $PSScriptRoot
+$raiz    = $PSScriptRoot
 $destino = Join-Path $raiz "entrega\Actas de Plenos del Ayuntamiento"
 $config  = Join-Path $destino "Configuración (no tocar)"
 
@@ -11,19 +11,19 @@ pyinstaller --onefile --console --noconfirm `
     --distpath $destino `
     --workpath (Join-Path $raiz "build") `
     --specpath (Join-Path $raiz "build") `
-    --paths (Join-Path $raiz "scripts") `
-    --add-data "$(Join-Path $raiz 'scripts\plantillas');plantillas" `
+    --paths $raiz `
+    --add-data "$(Join-Path $raiz 'plantillas');plantillas" `
     --hidden-import plenos_informe `
     --hidden-import plenos_acta `
     --exclude-module matplotlib `
     --exclude-module IPython `
     --exclude-module rich `
-    (Join-Path $raiz "scripts\asistente_plenos.py")
+    (Join-Path $raiz "asistente_plenos.py")
 
 New-Item -ItemType Directory -Force -Path (Join-Path $config "registros") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $destino "Actas generadas") | Out-Null
 
-Copy-Item (Join-Path $raiz "scripts\asistente\LEEME.txt") `
+Copy-Item (Join-Path $raiz "asistente\LEEME.txt") `
           (Join-Path $destino "LÉEME - Cómo generar un acta.txt") -Force
 
 # Las claves no se pisan nunca: si ya hay un configuracion.env, se respeta.
