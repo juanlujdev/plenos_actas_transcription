@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-07
+date_updated: 2026-09-09
 source_count: 1
 ---
 
@@ -217,4 +217,5 @@ personas hablando es, a su vez, la medida de cuánto fundió el transcriptor.
 
 [[2026-08-22-plenos-assemblyai-diarizacion]], [[pipeline-plenos]],
 [[bucle-generador-auditor-corrector]], [[via-de-escape-en-el-esquema]],
-[[convocatoria-como-fuente]]
+[[convocatoria-como-fuente]],
+[[speaker-identification-descartado]]

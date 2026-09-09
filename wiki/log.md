@@ -212,3 +212,15 @@ pasan a texto plano. Las rutas `scripts/*.py` se aplanan a la
 raíz del repositorio nuevo.
 
 Ver `docs/superpowers/specs/2026-09-08-separacion-repo-plenos-design.md`.
+
+## [2026-09-09] ingest | Speaker Identification de AssemblyAI: descartado
+
+El dashboard de coste mostraba la línea `Speaker Identification` a $0 y se preguntó si
+convenía usarla en vez de la identificación que hace el generador. No: el add-on infiere
+del contenido del transcript (no es biometría), exige la diarización debajo, devuelve un
+mapping sin cita ni timestamp y corre sobre las mismas etiquetas que pueden venir
+fundidas. Cuesta $0,02/h, pero el argumento es de trazabilidad.
+
+Nueva página `wiki/concepts/speaker-identification-descartado.md`; enlazada desde
+`diarizacion-como-andamiaje`. Sin cambios en el código.
+
