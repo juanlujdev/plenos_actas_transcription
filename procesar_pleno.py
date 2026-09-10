@@ -528,12 +528,21 @@ class ResultadoPleno(NamedTuple):
     `ruta_guia` y `objeciones` van al final y con valor por defecto para no romper a
     quien ya desempaqueta este NamedTuple por posición. `objeciones` son las mismas
     `pendientes` del auditor, pero legibles (ver plenos_guia.objecion_legible): dónde,
-    qué dice el acta, qué se oye en la grabación y el enlace al minuto."""
+    qué dice el acta, qué se oye en la grabación y el enlace al minuto.
+
+    `fallo_acta` distingue las DOS causas de que `ruta_acta` sea None, que no se
+    arreglan igual: vacío = el tipo de sesión no consta (hace falta la convocatoria y
+    volver a pasar por el modelo); con texto = el .docx no se pudo escribir aunque el
+    informe está bien (casi siempre el documento abierto en Word), y eso se recompone
+    gratis con --rehacer-acta. Sin este campo el asistente daba siempre el primer
+    motivo, que en el segundo caso es falso y mandaba a la funcionaria a pagar otro
+    bucle de LLM para arreglar algo que se arregla cerrando Word."""
     carpeta: Path
     ruta_acta: Path | None
     pendientes: list
     ruta_guia: Path | None = None
     objeciones: tuple = ()
+    fallo_acta: str = ""
 
 
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
@@ -593,6 +602,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     guardar_objeciones(destino, fecha, pendientes)
 
     ruta_acta = None
+    fallo_acta = ""
     if informe.tipo_sesion in ("ordinaria", "extraordinaria"):
         ruta_acta = destino / f"{fecha}-acta-{informe.tipo_sesion}.docx"
         try:
@@ -602,6 +612,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
             # un fallo al componer el documento se lleve todo eso por delante no es
             # aceptable: el JSON ya está en disco y --rehacer-acta lo recompone gratis.
             ruta_acta = None
+            fallo_acta = f"{type(e).__name__}: {e}"
             print(f"\nEl informe está guardado, pero el acta no se ha podido componer:"
                   f"\n  {type(e).__name__}: {e}"
                   f"\nCorrige el JSON si hace falta y vuelve a intentarlo SIN coste:"
@@ -638,7 +649,9 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     # El cierre es lo último que queda en pantalla tras 20 minutos de log: tiene que
     # decir en una línea si esto se puede enviar a la secretaria o no.
     if not ruta_acta:
-        _banner("ERROR", "no hay acta: el tipo de sesión no consta en la grabación.")
+        _banner("ERROR", f"no hay acta: el .docx no se pudo escribir ({fallo_acta})."
+                if fallo_acta else
+                "no hay acta: el tipo de sesión no consta en la grabación.")
     elif pendientes:
         _banner("WARNING", f"acta generada, pero con "
                            f"{_plural(len(pendientes), 'objeción', 'objeciones')} sin "
@@ -646,7 +659,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     else:
         _banner("SUCCESS", "acta generada y sin objeciones del auditor.")
 
-    return ResultadoPleno(destino, ruta_acta, pendientes, ruta_guia, objeciones)
+    return ResultadoPleno(destino, ruta_acta, pendientes, ruta_guia, objeciones,
+                          fallo_acta)
 
 
 # ── cierre de la ejecución ────────────────────────────────────────────────────
@@ -738,6 +752,7 @@ def _rehacer_acta(fecha: str) -> int:
     # (fechas, horas, la fórmula del acuerdo): así el fichero refleja lo que se compuso.
     ruta_json.write_text(informe.model_dump_json(indent=2), encoding="utf-8")
     ruta_acta = carpeta / f"{fecha}-acta-{informe.tipo_sesion}.docx"
+    fallo = ""
     try:
         render_acta(informe, str(ruta_acta))
         print(f"Acta: {ruta_acta}")
@@ -750,6 +765,7 @@ def _rehacer_acta(fecha: str) -> int:
         print(f"\nEl acta no se ha podido componer: {type(e).__name__}: {e}"
               f"\nSi el mensaje habla de permisos, seguramente el documento esté abierto "
               f"en Word: ciérralo y vuelve a lanzar --rehacer-acta {fecha}.")
+        fallo = f"{type(e).__name__}: {e}"
 
     entrada = _cargar_json(carpeta / "entrada.json", {})
     ruta_md = carpeta / f"{fecha}-transcripcion.md"
@@ -763,7 +779,9 @@ def _rehacer_acta(fecha: str) -> int:
             print(f"Guía de verificación: {ruta_guia}")
     else:
         print(f"(sin transcripción en {ruta_md}: no se ha podido rehacer la guía)")
-    return 0
+    # La guía y el .txt se rehacen igual, pero el código de salida habla del .docx:
+    # es lo que el asistente necesita para saber si el reintento sirvió de algo.
+    return 1 if fallo else 0
 
 
 def main() -> int:

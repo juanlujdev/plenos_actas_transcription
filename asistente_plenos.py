@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from procesar_pleno import (ErrorDeDescarga, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
-                            _rehacer_informe, _titulo_de_youtube)
+                            _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
 from plenos_informe import normalizar_fecha
 # El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py, no aquí: depende
 # del mismo formato de objeción que objecion_legible, y procesar_pleno lo escribe
@@ -411,25 +411,68 @@ def _anunciar_guia(consola: Consola, resultado) -> None:
     consola.decir("    Ojo: esa guía NO es el acta, es solo la ayuda para comprobarla.")
 
 
+def reintentar_acta(consola: Consola, resultado, fecha: str):
+    """El acta está redactada pero el .docx no se pudo escribir. La causa casi siempre
+    es tenerlo abierto en Word, y recomponerlo desde el informe ya guardado es
+    instantáneo y no cuesta nada, así que se ofrece aquí mismo: mandarla a la opción 2
+    del menú volvería a pasar por el modelo y a cobrar por arreglar algo que se arregla
+    cerrando un programa. Devuelve el resultado con el acta ya escrita, o el mismo que
+    recibió si no se ha podido."""
+    consola.decir("\n    El acta está redactada, pero el archivo de Word no se ha podido")
+    consola.decir("    guardar. Casi siempre es porque el documento de este pleno está")
+    consola.decir("    abierto en Word.")
+    consola.decir(f"\n    Detalle técnico: {resultado.fallo_acta}")
+    while True:
+        consola.decir("\n    Ciérralo si lo tienes abierto y lo intento otra vez. Esto es")
+        consola.decir("    instantáneo: no vuelve a redactar nada.")
+        if not input("\n   ¿Lo intento ahora?  (s/n)  ").strip().lower().startswith("s"):
+            return resultado
+        if ejecutar_pipeline(consola, lambda: _rehacer_acta(fecha)) == 0:
+            acta = next(iter(sorted(resultado.carpeta.glob(f"{fecha}-acta-*.docx"))), None)
+            if acta:
+                return resultado._replace(ruta_acta=acta, fallo_acta="")
+        consola.decir("\n    Sigue sin poder guardarse.")
+
+
 def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> None:
     """Lo último que queda en pantalla: si esto se puede sellar o no."""
     raya = "  " + "═" * 56
+
+    # Antes de dar nada por perdido: si lo único que falló fue escribir el .docx, se
+    # reintenta gratis. Va aquí y no en el flujo para que valga igual al crear un pleno
+    # nuevo y al rehacerlo, que son los dos sitios que llaman a esta pantalla.
+    if resultado.ruta_acta is None and resultado.fallo_acta:
+        resultado = reintentar_acta(consola, resultado, fecha)
+
     consola.decir("\n" + raya)
 
     if resultado.ruta_acta is None:
-        # Sin tipo de sesión no hay plantilla que elegir, y elegirla a ciegas daría
-        # un encabezado equivocado en un documento que se sella.
         consola.decir("    NO SE HA PODIDO CREAR EL DOCUMENTO")
         consola.decir(raya)
         consola.decir("\n    La transcripción sí se ha guardado: no se ha perdido nada")
         consola.decir("    ni hay que empezar de cero.")
-        consola.decir("\n    Motivo: en la grabación no se dice si el pleno era ordinario")
-        consola.decir("    o extraordinario, y de eso depende el modelo de acta.")
-        consola.decir("\n    Qué puedes hacer:")
-        consola.decir("      · Usa la opción 2 del menú y aporta el PDF de la convocatoria:")
-        consola.decir("        ahí consta el tipo de sesión. Tarda unos 5 minutos.")
-        consola.decir(f"      · Si ya lo hiciste con la convocatoria, avisa a {RESPONSABLE}")
-        consola.decir(f"        y envíale este archivo:\n        {ruta_log}")
+        if resultado.fallo_acta:
+            # El informe está bien; lo que falla es escribir el fichero. La opción 2 NO
+            # es la salida aquí —volvería a pasar por el modelo y a cobrar—, así que se
+            # deriva al responsable, que lo recompone con --rehacer-acta sin coste.
+            consola.decir("\n    Motivo: el archivo de Word no se ha podido guardar, aunque")
+            consola.decir("    el acta sí está redactada y guardada por dentro.")
+            consola.decir(f"\n    Detalle técnico: {resultado.fallo_acta}")
+            consola.decir("\n    Qué puedes hacer:")
+            consola.decir("      · El acta no se ha perdido: en cuanto ese documento no")
+            consola.decir("        esté abierto, se puede recuperar sin repetir nada.")
+            consola.decir(f"      · Avisa a {RESPONSABLE} y envíale este")
+            consola.decir(f"        archivo:\n        {ruta_log}")
+        else:
+            # Sin tipo de sesión no hay plantilla que elegir, y elegirla a ciegas daría
+            # un encabezado equivocado en un documento que se sella.
+            consola.decir("\n    Motivo: en la grabación no se dice si el pleno era ordinario")
+            consola.decir("    o extraordinario, y de eso depende el modelo de acta.")
+            consola.decir("\n    Qué puedes hacer:")
+            consola.decir("      · Usa la opción 2 del menú y aporta el PDF de la convocatoria:")
+            consola.decir("        ahí consta el tipo de sesión. Tarda unos 5 minutos.")
+            consola.decir(f"      · Si ya lo hiciste con la convocatoria, avisa a {RESPONSABLE}")
+            consola.decir(f"        y envíale este archivo:\n        {ruta_log}")
         abrir_carpeta(consola, resultado.carpeta)
         return
 

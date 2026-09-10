@@ -37,7 +37,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline | 2026-08-22 |
 | [[speaker-identification-descartado]] | Por qué la identificación de voces la hace el generador con cita y timestamp, y no el add-on de AssemblyAI | 2026-09-09 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
-| [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-07 |
+| [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-10 |
 
 ## Síntesis
 

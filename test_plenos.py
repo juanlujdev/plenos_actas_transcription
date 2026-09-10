@@ -2501,7 +2501,11 @@ try:
     finally:
         _pa_reh.render_acta = _render_original
 
-    test("--rehacer-acta: con el .docx bloqueado, no aborta la función", _codigo3, 0)
+    # El código de salida habla del .docx, y es de lo que se fía el asistente para
+    # saber si el reintento sirvió: 1 = sigue sin escribirse. Que la función NO aborte
+    # lo dicen las dos aserciones siguientes (avisa, y la guía se regenera igual).
+    test("--rehacer-acta: con el .docx bloqueado, el código de salida lo dice",
+         _codigo3, 1)
     test("--rehacer-acta: con el .docx bloqueado, avisa de que puede estar abierto en Word",
          "Word" in _salida_bloqueo.getvalue(), True)
     test("--rehacer-acta: con el .docx bloqueado, la guía se regenera igualmente",
@@ -2589,6 +2593,49 @@ test("asuntos fuera del orden del día: sin ninguno, la sección no aparece",
 # El campo tiene default: un informe.json viejo (--rehacer-acta) sigue cargando.
 test("asuntos fuera del orden del día: campo opcional, informes viejos siguen validando",
      InformePleno.model_validate(INFORME_MINIMO).asuntos_no_convocados, [])
+
+
+# ── las dos causas de «no hay acta» no se confunden ───────────────────────────
+print("── las dos causas de «no hay acta» ──────────────────────────────────")
+
+# El .docx abierto en Word dejaba ruta_acta=None igual que "el tipo de sesión no
+# consta", y el asistente daba siempre el segundo motivo: falso, y encima mandaba a
+# la funcionaria a pagar otro bucle de LLM para arreglar algo que se arregla cerrando
+# Word. `fallo_acta` las separa, y --rehacer-acta devuelve 1 cuando el .docx no se
+# escribió, que es de lo que se fía el asistente para reintentarlo gratis.
+import plenos_acta as _pa_fallo
+
+def _render_bloqueado(informe, ruta):
+    raise PermissionError(f"[Errno 13] Permission denied: '{ruta}'")
+
+with tempfile.TemporaryDirectory() as _tmp_f:
+    _bd_f = _pp.BORRADOR_DIR
+    _pp.BORRADOR_DIR = Path(_tmp_f) / "actas"
+    _bucle_f = _pi_rescate.bucle_informe
+    _pi_rescate.bucle_informe = lambda t, c=None: (
+        InformePleno.model_validate(INFORME_MINIMO), [])
+    _render_f = _pa_fallo.render_acta
+    _pa_fallo.render_acta = _render_bloqueado
+    try:
+        _res_f = _pp.procesar_pleno(None, "vid", "PLENO ORDINARIO", "2026-06-26", None,
+                                    transcripcion="[00:00:01] Interviniente A: hola.")
+        test("dos causas: con el .docx bloqueado no hay acta", _res_f.ruta_acta, None)
+        test("dos causas: pero el motivo real queda registrado",
+             _res_f.fallo_acta.startswith("PermissionError"), True)
+        test("dos causas: --rehacer-acta avisa de que sigue sin escribirse",
+             _pp._rehacer_acta("2026-06-26"), 1)
+
+        _pa_fallo.render_acta = _render_f
+        test("dos causas: al liberarse, --rehacer-acta lo compone",
+             _pp._rehacer_acta("2026-06-26"), 0)
+        _res_ok = _pp.procesar_pleno(None, "vid", "PLENO ORDINARIO", "2026-06-26", None,
+                                     transcripcion="[00:00:01] Interviniente A: hola.")
+        test("dos causas: con acta compuesta, fallo_acta vacío", _res_ok.fallo_acta, "")
+        test("dos causas: y con su .docx", _res_ok.ruta_acta.exists(), True)
+    finally:
+        _pi_rescate.bucle_informe = _bucle_f
+        _pa_fallo.render_acta = _render_f
+        _pp.BORRADOR_DIR = _bd_f
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────

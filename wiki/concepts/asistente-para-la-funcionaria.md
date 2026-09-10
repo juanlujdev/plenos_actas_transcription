@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-07
+date_updated: 2026-09-10
 source_count: 1
 ---
 
@@ -85,7 +85,11 @@ pantalla es una frase y la ruta del log; el log es lo que ella envía al desarro
 ## Por qué la funcionaria genera pero no publica
 
 El asistente no toca git en ningún caso, y su menú no ofrece `--rehacer-acta` ni
-`--rehacer-informe`, que son herramientas del desarrollador. El reparto de papeles es
+`--rehacer-informe`, que son herramientas del desarrollador. (Matiz del 2026-09-10:
+`--rehacer-acta` **no** es una opción del menú, pero el asistente lo llama por dentro
+cuando el `.docx` no se pudo escribir; ver más abajo. La frontera sigue siendo la
+misma: ella no elige herramientas, se le ofrece la única acción que resuelve lo que
+acaba de pasar.) El reparto de papeles es
 explícito en la spec: ella genera el borrador y lo envía; la secretaria lo revisa, lo
 completa y lo sella.
 
@@ -192,6 +196,54 @@ se enseña. Tres detalles que salieron de pensar en ella y no en el programa:
   contentar a una comprobación es invertir las prioridades.
 - Los mensajes de fallo dicen siempre **si la transcripción está a salvo**, porque es lo
   único caro y lo que decide si ella cree haber perdido veinte minutos.
+
+## Dos fallos que se veían igual: "no hay acta" (2026-09-10)
+
+`ResultadoPleno.ruta_acta` se ponía a `None` por **dos** motivos que no se arreglan
+igual, y la pantalla final daba siempre el mismo:
+
+1. **El tipo de sesión no consta en la grabación** — no hay plantilla que elegir y
+   elegirla a ciegas daría un encabezado falso en un documento que se sella. Solo se
+   arregla aportando la convocatoria y **volviendo a pasar por el modelo**.
+2. **El `.docx` no se pudo escribir**, con el informe perfectamente redactado y ya
+   guardado en disco. La causa documentada y real es tener el acta **abierta en Word**,
+   que la bloquea (`PermissionError`).
+
+En el caso 2 la funcionaria leía *"en la grabación no se dice si el pleno era ordinario
+o extraordinario"* —falso— y se le recomendaba la opción 2 del menú, que **vuelve a
+llamar a Gemini**: cinco minutos y dinero para arreglar algo que se arregla cerrando un
+programa, y que además `--rehacer-acta` recompone gratis desde el `informe.json`.
+
+Lo hecho:
+
+- **`ResultadoPleno` gana `fallo_acta`**, vacío en el caso 1 y con el error en el caso 2.
+  El dato ya existía dentro de `procesar_pleno` (el `except` del render lo imprimía); lo
+  que faltaba era **dejarlo salir de la función**. El `_banner` de la CLI tenía el mismo
+  motivo falso y también se corrigió.
+- **`--rehacer-acta` devuelve 1 si el `.docx` no llegó a escribirse.** Antes devolvía
+  siempre 0: seguía adelante con la guía y el `.txt` —que es correcto y deliberado, no
+  tienen culpa de que Word bloquee el documento— pero el código de salida no distinguía
+  haberlo compuesto de no haberlo compuesto, y el asistente necesita justo eso para saber
+  si el reintento sirvió.
+- **`reintentar_acta()` en el asistente**: explica qué pasó, le pide que cierre el
+  documento y recompone en el sitio, en bucle, hasta que ella diga que no. Si sale bien,
+  la pantalla continúa por la rama normal de "el acta está lista".
+
+Dos criterios que conviene no perder:
+
+- **El reintento vive en `pantalla_final`, no en cada flujo.** Es el único punto por el
+  que pasan tanto crear un pleno nuevo como rehacerlo, y ponerlo en los dos flujos
+  habría sido la misma pantalla escrita dos veces, con la mitad de las probabilidades de
+  seguir igual dentro de seis meses.
+- **Un mensaje de error que nombra una causa que no ha ocurrido es peor que uno
+  genérico**: no solo no ayuda, dirige el esfuerzo al sitio equivocado y, aquí, a pagar.
+  Es el mismo principio de [[via-de-escape-en-el-esquema]] fuera del esquema: si no se
+  sabe cuál de dos cosas pasó, la solución no es elegir una, es distinguirlas.
+
+La comprobación que queda es la de siempre en este programa —**los fallos están en las
+costuras**—: un test recorre `procesar_pleno` con el render bloqueado, verifica que el
+motivo real sale en `fallo_acta`, que `--rehacer-acta` devuelve 1 mientras siga
+bloqueado y 0 en cuanto se libere.
 
 ## Relacionado
 

@@ -224,3 +224,14 @@ fundidas. Cuesta $0,02/h, pero el argumento es de trazabilidad.
 Nueva página `wiki/concepts/speaker-identification-descartado.md`; enlazada desde
 `diarizacion-como-andamiaje`. Sin cambios en el código.
 
+## [2026-09-10] ingest | El asistente confundía dos causas de "no hay acta"
+
+`ruta_acta=None` significaba dos cosas —el tipo de sesión no consta, o el `.docx` no se
+pudo escribir (Word lo tenía abierto)— y la pantalla final daba siempre la primera. En el
+segundo caso el motivo era falso y mandaba a la funcionaria a la opción 2, que vuelve a
+pasar por Gemini para arreglar algo que se arregla cerrando Word.
+
+`ResultadoPleno` gana `fallo_acta`; `--rehacer-acta` devuelve 1 si el `.docx` no se
+escribió; el asistente ofrece el reintento gratis en `pantalla_final`. Tests nuevos y
+`.exe` reconstruido. Ampliado `wiki/concepts/asistente-para-la-funcionaria.md`.
+
