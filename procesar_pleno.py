@@ -38,7 +38,7 @@ from typing import NamedTuple
 
 import requests
 
-from plenos_informe import Problema, normalizar_fecha
+from plenos_informe import Problema, normalizar_fecha, verificar_respuesta
 
 # UTF-8 en Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -258,7 +258,7 @@ def _subir_audio(ruta: str, cabeceras: dict, intentos: int = 4) -> str:
             with open(ruta, "rb") as f:
                 r = requests.post(f"{AAI_URL}/v2/upload", headers=cabeceras,
                                   data=f, timeout=3600)
-            r.raise_for_status()
+            verificar_respuesta(r)
             return r.json()["upload_url"]
         except (requests.RequestException, OSError) as e:
             if intento == intentos - 1:
@@ -316,7 +316,7 @@ def transcribir_assemblyai(ruta: str) -> str:
         # disfluencies se queda en false (por defecto): un acta no recoge los "eh".
     }
     r = requests.post(f"{AAI_URL}/v2/transcript", headers=cabeceras, json=cuerpo, timeout=60)
-    r.raise_for_status()
+    verificar_respuesta(r)
     transcript_id = r.json()["id"]
 
     print(f"  transcribiendo (id {transcript_id}); un pleno tarda unos minutos...")
@@ -332,7 +332,7 @@ def transcribir_assemblyai(ruta: str) -> str:
         try:
             r = requests.get(f"{AAI_URL}/v2/transcript/{transcript_id}",
                              headers=cabeceras, timeout=60)
-            r.raise_for_status()
+            verificar_respuesta(r)
             estado = r.json()
         except requests.RequestException as e:
             fallos_seguidos += 1
@@ -394,7 +394,7 @@ def _transcribir_chunk(ruta: str) -> dict:
                       "response_format": "verbose_json"},
                 timeout=600,
             )
-        r.raise_for_status()
+        verificar_respuesta(r)
         return r.json()
     return _reintentar(llamada)
 

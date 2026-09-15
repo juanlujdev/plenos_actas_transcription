@@ -36,8 +36,6 @@ if (-not (Test-Path $env_file)) {
     $contenido = @"
 ASSEMBLYAI_API_KEY=
 OPENROUTER_API_KEY=
-GROQ_API_KEY=
-ACTAS_DIR=
 "@
     [System.IO.File]::WriteAllText($env_file, $contenido, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "Creado $env_file - RELLENA LAS CLAVES antes de entregarlo."

@@ -16,12 +16,13 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[2026-08-23-reglas-de-recuento-y-decisiones-de-acta]] | conversación de trabajo del 2026-08-23 (sin spec ni plan) | 2026-08-23 |
 | [[acta-oficial-11-febrero-2026]] | acta borrador del Ayuntamiento en PDF (documento oficial) | 2026-08-23 |
 | [[2026-09-07-guia-forense-y-literal-de-escape]] | conversación de trabajo del 2026-09-07 (sin spec ni plan) | 2026-09-07 |
+| [[2026-09-15-claves-del-ayuntamiento-y-errores-http]] | conversación de trabajo del 2026-09-11 al 2026-09-15 (sin spec ni plan) | 2026-09-15 |
 
 ## Entidades
 
 | Página | Descripción | Actualizado |
 |--------|-------------|-------------|
-| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; validado end-to-end el 2026-08-22 | 2026-09-08 |
+| [[pipeline-plenos]] | Acta oficial de plenos desde la grabación (AssemblyAI diarizado + `gemini-2.5-pro` vía OpenRouter + plantilla Word), ejecución manual en local; en cuentas del Ayuntamiento y validado end-to-end desde el `.exe` el 2026-09-15 | 2026-09-15 |
 
 ## Conceptos
 
@@ -37,7 +38,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline | 2026-08-22 |
 | [[speaker-identification-descartado]] | Por qué la identificación de voces la hace el generador con cita y timestamp, y no el add-on de AssemblyAI | 2026-09-09 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
-| [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-10 |
+| [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-15 |
 
 ## Síntesis
 

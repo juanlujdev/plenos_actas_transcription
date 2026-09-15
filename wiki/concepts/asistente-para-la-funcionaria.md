@@ -1,7 +1,7 @@
 ---
 type: concept
-date_updated: 2026-09-10
-source_count: 1
+date_updated: 2026-09-15
+source_count: 2
 ---
 
 # El asistente para la funcionaria: empaquetar sin reescribir
@@ -33,13 +33,22 @@ asumido es el falso positivo típico de antivirus en el primer arranque con ejec
 
 `cargar_configuracion()` lee `Configuración (no tocar)/configuracion.env` con
 `python-dotenv` en vez de esperar que las claves estén ya en el entorno de Windows.
-Durante las pruebas el pipeline gasta las claves personales del desarrollador
-(AssemblyAI y OpenRouter, de pago). Cuando se validen, se sustituirán por claves del
-Ayuntamiento **editando ese fichero con el Bloc de notas**, sin recompilar el `.exe` ni
-tocar el Registro de Windows. Compilar las claves dentro del ejecutable habría atado
+Durante las pruebas el pipeline gastó las claves personales del desarrollador
+(AssemblyAI y OpenRouter, de pago). **El 2026-09-15 se sustituyeron por las de las cuentas
+del Ayuntamiento editando ese fichero con el Bloc de notas**, sin recompilar el `.exe`, sin
+tocar una línea de código y sin tocar el Registro de Windows: la decisión se tomó en
+previsión de ese día y es ahí donde se cobró
+([[2026-09-15-claves-del-ayuntamiento-y-errores-http]]). Compilar las claves dentro del ejecutable habría atado
 cada cambio de cuenta a una reconstrucción y a redistribuir un `.exe` nuevo; ponerlas en
 variables de entorno del sistema habría exigido a alguien sin conocimientos técnicos
 manipular el Panel de control. Un `.env` es editable por cualquiera con un doble clic.
+
+El fichero lleva **solo las dos claves que se usan**. `GROQ_API_KEY` y `ACTAS_DIR`
+estuvieron ahí hasta el 2026-09-15 y se quitaron por ruido: Groq es inalcanzable desde el
+`.exe` (solo entra si falta la clave de AssemblyAI, y necesita `ffmpeg`, que no está en ese
+PC) y `ACTAS_DIR` vacío no hace nada, porque el asistente calcula la carpeta y se asigna la
+variable él mismo. Ese fichero lo abre alguien que no sabe qué es una variable de entorno:
+una línea que no hace nada solo puede confundirla o invitarla a rellenarla.
 
 Si falta una clave, `main()` lo comprueba al arrancar y no deja avanzar con un
 `KeyError` a mitad de la transcripción: dice *"El programa todavía no está
@@ -75,6 +84,21 @@ kilómetros del desarrollador. La clase `Consola` resuelve las dos necesidades a
 sustituyendo `sys.stdout`: cada línea se escribe entera en un fichero de registro y,
 si `traducir()` reconoce el patrón, también su versión amable en pantalla. Lo que no
 se traduce no desaparece — sigue en el log —, solo no se muestra.
+
+### Y que diga *por qué*, no solo *dónde* (2026-09-15)
+
+Si el log es el canal de diagnóstico, un mensaje que nombra el sitio del fallo pero no su
+causa cuesta un viaje de ida y vuelta de días. `raise_for_status()` de `requests` compone
+su mensaje con el código, la razón HTTP y la URL, y **tira el cuerpo de la respuesta** —
+que es donde viajan `"insufficient credits"` (OpenRouter) o `"Your current account balance
+is negative"` (AssemblyAI). Un registro real del 2026-09-05 lo enseña: `401 Client Error:
+Unauthorized for url: .../audio/transcriptions`, y el motivo que Groq sí devolvió no
+aparece por ningún lado.
+
+`verificar_respuesta()` sustituye a `raise_for_status()` en las cinco llamadas que pueden
+quedarse sin saldo o sin clave y adjunta el cuerpo al mensaje. Es de una sola dirección:
+no cambia ningún comportamiento, solo lo que se puede leer después
+([[2026-09-15-claves-del-ayuntamiento-y-errores-http]]).
 
 Es la misma idea que [[persistir-lo-caro-antes-de-lo-fragil]] aplicada a la
 comunicación en vez de a los datos: lo caro de reconstruir (qué pasó exactamente
@@ -248,4 +272,5 @@ bloqueado y 0 en cuanto se libere.
 ## Relacionado
 
 [[pipeline-plenos]], [[guia-de-verificacion]], [[diarizacion-como-andamiaje]],
-[[por-que-plenos-en-local]], [[persistir-lo-caro-antes-de-lo-fragil]]
+[[por-que-plenos-en-local]], [[persistir-lo-caro-antes-de-lo-fragil]],
+[[2026-09-15-claves-del-ayuntamiento-y-errores-http]]

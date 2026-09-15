@@ -235,3 +235,20 @@ pasar por Gemini para arreglar algo que se arregla cerrando Word.
 escribió; el asistente ofrece el reintento gratis en `pantalla_final`. Tests nuevos y
 `.exe` reconstruido. Ampliado `wiki/concepts/asistente-para-la-funcionaria.md`.
 
+## [2026-09-15] ingest | Las claves pasan a las cuentas del Ayuntamiento, y el log dice por qué falla
+
+Cierra el punto 1 de los pendientes de `pipeline-plenos`: OpenRouter y AssemblyAI pasan a
+cuentas del Ayuntamiento con saldo propio. **Sin tocar código** — las claves viven en
+`configuracion.env` desde el diseño del asistente, que se hizo justo para esto. De las
+plataformas solo hacía falta saldo en OpenRouter (`gemini-2.5-pro` no tiene capa gratuita)
+y que su política de privacidad no bloquee el enrutado; AssemblyAI no exige activar nada,
+`universal-3-5-pro` va en el cuerpo de la petición. Validado con una comprobación previa de
+un céntimo y luego regenerando el pleno del 2026-09-03 entero desde el `.exe`.
+
+Aparte: `verificar_respuesta()` adjunta el cuerpo de la respuesta al `HTTPError` en las
+cinco llamadas de pago, porque `raise_for_status()` lo tiraba y el registro decía "402
+Client Error" sin decir que era falta de saldo. `GROQ_API_KEY` y `ACTAS_DIR` salen del
+`configuracion.env`: ninguna de las dos se usa desde el `.exe`.
+
+Nueva página `wiki/sources/2026-09-15-claves-del-ayuntamiento-y-errores-http.md`; ampliados
+`asistente-para-la-funcionaria` y `pipeline-plenos`.

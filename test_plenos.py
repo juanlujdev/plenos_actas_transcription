@@ -2638,6 +2638,41 @@ with tempfile.TemporaryDirectory() as _tmp_f:
         _pp.BORRADOR_DIR = _bd_f
 
 
+# ── verificar_respuesta ───────────────────────────────────────────────────────
+print("── verificar_respuesta ───────────────────────────────────────────────")
+
+import requests as _rq
+from plenos_informe import verificar_respuesta as _verificar
+
+
+def _respuesta_http(codigo, cuerpo, razon):
+    r = _rq.Response()
+    r.status_code, r.reason, r.url = codigo, razon, "https://ejemplo/api"
+    r._content = cuerpo.encode("utf-8")
+    return r
+
+
+def _mensaje_de(r):
+    try:
+        _verificar(r)
+    except _rq.HTTPError as e:
+        return str(e)
+    return "no lanzó"
+
+
+# El caso que motiva todo esto: sin el cuerpo, el registro solo diría "402 Client
+# Error" y habría que entrar al panel de OpenRouter a ver por qué paró el pleno.
+_m402 = _mensaje_de(_respuesta_http(
+    402, '{"error":{"code":402,"message":"Insufficient credits"}}', "Payment Required"))
+test("verificar_respuesta: el motivo del 402 llega al mensaje",
+     "402" in _m402 and "Insufficient credits" in _m402, True)
+test("verificar_respuesta: sin cuerpo, el mensaje de requests queda intacto",
+     _mensaje_de(_respuesta_http(400, "", "Bad Request")),
+     "400 Client Error: Bad Request for url: https://ejemplo/api")
+test("verificar_respuesta: una respuesta correcta pasa y se devuelve",
+     _verificar(_respuesta_http(200, "ok", "OK")).status_code, 200)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:

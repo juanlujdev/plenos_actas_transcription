@@ -828,6 +828,27 @@ def _log(texto: str) -> None:
     print(texto, flush=True)
 
 
+def verificar_respuesta(r):
+    """raise_for_status() pero dejando el cuerpo de la respuesta en el mensaje.
+
+    El mensaje que compone requests solo lleva código, razón HTTP y URL, y ahí se
+    pierde justo lo que explica el fallo: "insufficient credits" (OpenRouter) o
+    "Your current account balance is negative" (AssemblyAI) viajan en el cuerpo.
+    Sin esto, el registro que nos envía la funcionaria dice "402 Client Error" a
+    secas y hay que entrar al panel de la plataforma a adivinar por qué paró.
+    """
+    try:
+        r.raise_for_status()
+    except requests.HTTPError as e:
+        cuerpo = " ".join((r.text or "").split())[:300]
+        if not cuerpo:
+            raise
+        # `from None`: el encadenado metería en el registro la misma excepción dos
+        # veces con un "During handling of the above exception" por medio.
+        raise requests.HTTPError(f"{e} :: {cuerpo}", response=r) from None
+    return r
+
+
 def _esquema_estricto(schema):
     """Adapta el JSON Schema de pydantic al modo `strict` de OpenRouter, que exige
     todas las propiedades en `required` y prohíbe `default`. No pierde vías de
@@ -902,7 +923,7 @@ def _peticion(cuerpo: dict, intentos: int = 4) -> dict:
             _log(f"     OpenRouter devolvió {r.status_code}; esperando {espera // 60} min y reintentando...")
             time.sleep(espera)
             continue
-        r.raise_for_status()
+        verificar_respuesta(r)
         # Sin esto requests decodifica el SSE como ISO-8859-1 (text/event-stream no
         # declara charset) y se destrozan los acentos de todo el informe.
         r.encoding = "utf-8"

@@ -1,7 +1,7 @@
 ---
 type: entity
-date_updated: 2026-09-07
-source_count: 8
+date_updated: 2026-09-15
+source_count: 9
 ---
 
 # Pipeline del acta de plenos
@@ -342,9 +342,10 @@ un recuento mal atribuido donde ahora hay una omisión.
 ## Pendiente para pasar a producción
 
 De los cinco asuntos abiertos a 2026-08-08, el punto 4 quedó resuelto por el propio
-rediseño del acta oficial; los otros cuatro siguen abiertos:
+rediseño del acta oficial y el 2 por la vía de OpenRouter; el 1 se cerró el 2026-09-15 al
+pasar a las cuentas del Ayuntamiento. Siguen abiertos el 3 y el 5:
 
-1. **Claves de API del Ayuntamiento.** Las pruebas se han hecho con las claves personales del desarrollador. En producción hay que sustituirlas por claves generadas en cuentas del Ayuntamiento, con su tarjeta vinculada. Desde el 2026-08-22 el pipeline gasta saldo real **dos veces** en cada ejecución —OpenRouter por el bucle LLM (0,15–0,80 €) y AssemblyAI por la transcripción (~$0,48)—, y es saldo personal del desarrollador: es el argumento más fuerte para hacer este cambio pronto. Total estimado por pleno: **0,6–1,3 €**. Matiz de urgencia: la parte de AssemblyAI sale del crédito inicial de $50, que a pleno mensual dura años; la de OpenRouter es saldo recargable que se agota de verdad.
+1. ~~**Claves de API del Ayuntamiento.**~~ **Resuelto** el 2026-09-15 por [[2026-09-15-claves-del-ayuntamiento-y-errores-http]]: las dos cuentas son del Ayuntamiento, con saldo propio, y el pleno del 2026-09-03 se regeneró entero con ellas desde el `.exe`. No hizo falta tocar código — las claves se editan en `configuracion.env` — y de las plataformas solo hubo que atender dos cosas: comprar saldo en OpenRouter y comprobar que su política de privacidad no bloquea el enrutado. El diagnóstico que sigue explicando por qué urgía: desde el 2026-08-22 el pipeline gasta saldo real **dos veces** en cada ejecución —OpenRouter por el bucle LLM (0,15–0,80 €) y AssemblyAI por la transcripción (~$0,48)—, y era saldo personal del desarrollador: fue el argumento más fuerte para hacer este cambio pronto. Total estimado por pleno: **0,6–1,3 €**. Matiz de urgencia: la parte de AssemblyAI sale del crédito inicial de $50, que a pleno mensual dura años; la de OpenRouter es saldo recargable que se agota de verdad.
 2. ~~**Migrar a `gemini-2.5-pro`.**~~ **Resuelto** el 2026-08-22 por [[2026-08-22-plenos-openrouter-gemini-pro]], por la vía de OpenRouter en vez de la facturación con Google. El motivo técnico se mantiene: `pro` sigue mejor las reglas estrictas de los prompts (no inferir, vías de escape, atribución solo si es explícita) y su auditor detecta mejor las afirmaciones no respaldadas — relevante en un documento público sobre votaciones. El pleno real del 2026-08-22 dio la primera evidencia a favor: el auditor cazó una atribución falsa (una intervención dada al público siendo de un concejal), un recuento parcial presentado como completo y un empate mal modelado, y sostuvo las tres objeciones frente a un corrector que insistía en rellenar. No hay comparación directa con `flash` sobre el mismo pleno.
 3. **Visto bueno de la secretaria** sobre el acta generada. De su revisión pueden salir ajustes de los prompts (tono, extensión, qué se recoge de cada punto). Iterar es barato: `--rehacer-informe` reutiliza la transcripción y no vuelve a pagarla.
 4. ~~Averiguar qué usa el PC de secretaría (Drive, OneDrive u otro) para dejar allí una carpeta con los informes generados.~~ **Resuelto** por [[2026-08-21-acta-oficial-plenos-design]]: no hace falta averiguar nada de ese equipo — el borrador se envía por **email** a la secretaria y ella devuelve el PDF sellado, sin depender de ninguna nube compartida. La vía de automatizar el pipeline vía carpeta compartida (que este punto dejaba abierta, ver [[por-que-plenos-en-local]]) queda descartada junto con él.
