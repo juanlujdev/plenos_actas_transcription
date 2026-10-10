@@ -138,6 +138,13 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   encabezado "ORDEN DEL DÍA". `render_acta` reaprovecha la banda de A) como ese
   encabezado y elimina las otras cuatro tablas. `parte` sigue existiendo, pero solo para
   saber si el punto termina en acuerdo o en "La Corporación se da por informada".
+- **Un pleno en dos vídeos se une a mano; dos plenos del mismo día no se pisan.** Los dos
+  audios se unen con ffmpeg y se pasan como archivo (el asistente lo acepta donde pide la
+  URL; sin `video_url` la guía no lleva enlaces). La carpeta del borrador es
+  `procesar_pleno.clave_pleno(fecha, tipo)`: `<fecha>` o `<fecha>-extraordinario`; esa
+  clave (`clave[:10]` = fecha) es lo que reciben `--rehacer-*`. El asistente pregunta el
+  tipo; CLI `--extraordinario`. Detalle en
+  `wiki/concepts/pleno-en-varias-grabaciones-y-mismo-dia.md`.
 - **Los intervinientes son una ayuda, no una prueba.** El asistente (y `--intervinientes
   fichero.txt`, una persona por línea: `Nombre completo = cómo la llaman`) recoge quién
   interviene y los apodos de ESE pleno (`Chari`, `Nando`). Van a `entrada.json`, a los

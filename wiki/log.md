@@ -286,3 +286,10 @@ con pasada extra de atribuciones, `citas_no_halladas` y `toponimos_parecidos` en
 El auditor pasa a Opus 5.5 tras compararlo con Sonnet 5.5 sobre el acta del 3-IX. Nuevo
 `restaurar_recuentos` en el bucle y línea en los prompts del auditor y de atribuciones.
 Ampliada `wiki/concepts/intervinientes-y-reglas-tras-el-7-x.md`; CLAUDE.md actualizado.
+
+## [2026-10-10] ingest | Pleno en varias grabaciones y plenos del mismo día
+
+Nuevo `wiki/concepts/pleno-en-varias-grabaciones-y-mismo-dia.md`: el asistente acepta un
+archivo local donde pide la URL; `clave_pleno` separa carpetas de ordinario y extraordinario
+del mismo día (pregunta nueva en el asistente, `--extraordinario` en CLI). Enlazado desde
+`wiki/concepts/asistente-para-la-funcionaria.md`; CLAUDE.md actualizado.

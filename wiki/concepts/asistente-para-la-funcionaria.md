@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-15
+date_updated: 2026-10-10
 source_count: 2
 ---
 
@@ -269,8 +269,13 @@ costuras**—: un test recorre `procesar_pleno` con el render bloqueado, verific
 motivo real sale en `fallo_acta`, que `--rehacer-acta` devuelve 1 mientras siga
 bloqueado y 0 en cuanto se libere.
 
+## Archivo local y plenos del mismo día (2026-10-10)
+
+El asistente acepta un archivo arrastrado donde pide la URL y pregunta si el pleno es
+ordinario o extraordinario (decide la carpeta). Ver [[pleno-en-varias-grabaciones-y-mismo-dia]].
+
 ## Relacionado
 
-[[pipeline-plenos]], [[guia-de-verificacion]], [[diarizacion-como-andamiaje]],
+[[pipeline-plenos]], [[pleno-en-varias-grabaciones-y-mismo-dia]], [[guia-de-verificacion]], [[diarizacion-como-andamiaje]],
 [[por-que-plenos-en-local]], [[persistir-lo-caro-antes-de-lo-fragil]],
 [[2026-09-15-claves-del-ayuntamiento-y-errores-http]]

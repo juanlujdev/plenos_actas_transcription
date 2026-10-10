@@ -5,7 +5,7 @@ procesar_pleno.py - Pipeline del acta de plenos. Ejecución manual desde el PC.
 Modos:
     --url <youtube>              descarga el audio del vídeo y lo procesa
     --audio <fichero> --fecha YYYY-MM-DD --titulo "..."   procesa un audio local
-    --rehacer-informe <fecha>    rehace el acta de un pleno ya transcrito (no vuelve a transcribir)
+    --rehacer-informe <fecha>    (extraordinario: <fecha>-extraordinario) rehace el acta de un pleno ya transcrito (no vuelve a transcribir)
     --rehacer-acta <fecha>       recompone el .docx desde el informe.json guardado (sin LLM)
 
 Opcional en todos los modos de generación:
@@ -45,8 +45,16 @@ RAIZ = Path(__file__).resolve().parent
 BORRADOR_DIR = RAIZ / "uploads" / "actas"
 
 
+def clave_pleno(fecha: str, tipo: str | None = None) -> str:
+    """Nombre de la carpeta de un pleno: la fecha, más «-extraordinario» si lo es, para que
+    un extraordinario y un ordinario del mismo día no se pisen. Los ordinarios siguen
+    llamándose solo por la fecha. La fecha se recupera con clave[:10]."""
+    return f"{fecha}-extraordinario" if tipo == "extraordinaria" else fecha
+
+
 def dir_borrador(fecha: str) -> Path:
-    """Carpeta de trabajo de un pleno (uploads/ está gitignorado).
+    """Carpeta de trabajo de un pleno (uploads/ está gitignorado). `fecha` es la clave
+    de `clave_pleno`.
 
     ACTAS_DIR manda si está definida (el .exe corre sin repo); se lee en cada
     llamada, no al importar."""
@@ -459,13 +467,15 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    fecha: str, video_url: str | None,
                    transcripcion: str | None = None,
                    convocatoria: bytes | None = None,
-                   intervinientes: list[dict] | None = None) -> ResultadoPleno:
+                   intervinientes: list[dict] | None = None,
+                   tipo: str | None = None) -> ResultadoPleno:
     """Pipeline completo de un pleno: audio → transcripción → acta → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
     transcripcion: si se pasa, se salta el audio y la transcripción (--rehacer-informe).
     convocatoria: bytes del PDF del orden del día, o None.
     intervinientes: [{'nombre', 'apodos'}] o None; se guarda en entrada.json para --rehacer-informe.
+    tipo: 'ordinaria' | 'extraordinaria' | None. Solo decide la carpeta (ver clave_pleno).
     """
     from plenos_informe import MAX_VUELTAS, _plural, bucle_informe
     from plenos_acta import render_acta
@@ -478,7 +488,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
             transcripcion = (transcribir(fuente_audio, tmp, intervinientes) if intervinientes
                              else transcribir(fuente_audio, tmp))
 
-    destino = dir_borrador(fecha)
+    destino = dir_borrador(clave_pleno(fecha, tipo))
     destino.mkdir(parents=True, exist_ok=True)
     ruta_md = destino / f"{fecha}-transcripcion.md"
     ruta_json = destino / f"{fecha}-informe.json"
@@ -487,6 +497,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                "video_url": video_url}
     if intervinientes:
         entrada["intervinientes"] = intervinientes
+    if tipo:
+        entrada["tipo"] = tipo
 
     # La transcripción se guarda ANTES del bucle LLM para que --rehacer-informe la
     # reutilice si el bucle falla.
@@ -502,6 +514,9 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                            if intervinientes else bucle_informe(transcripcion, convocatoria))
 
     informe = fijar_fecha(informe, fecha)
+    if tipo and informe.tipo_sesion in ("ordinaria", "extraordinaria") and informe.tipo_sesion != tipo:
+        print(f"  ⚠ se indicó una sesión {tipo}, pero la grabación parece {informe.tipo_sesion}: "
+              f"revisa el encabezado del acta")
 
     ruta_json.write_text(informe.model_dump_json(indent=2), encoding="utf-8")
     _guardar_json(ruta_entrada, dict(entrada, resumen_corto=informe.resumen_corto))
@@ -602,10 +617,12 @@ def leer_intervinientes(ruta: str | None) -> list[dict] | None:
     return parsear_intervinientes(origen.read_text(encoding="utf-8")) or None
 
 
-def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None,
+def _rehacer_informe(clave: str, convocatoria_pdf: str | None = None,
                      intervinientes: list[dict] | None = None) -> "ResultadoPleno | None":
-    """Regenera el acta reutilizando la transcripción guardada (solo pasa por Gemini)."""
-    borrador = dir_borrador(fecha)
+    """Regenera el acta reutilizando la transcripción guardada (solo pasa por Gemini).
+    `clave`: la carpeta del pleno (ver clave_pleno)."""
+    fecha = clave[:10]
+    borrador = dir_borrador(clave)
     entrada = _cargar_json(borrador / "entrada.json", {})
     if not entrada:
         print(f"No hay ningún pleno con fecha {fecha} en {borrador}")
@@ -628,16 +645,18 @@ def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None,
                           entrada.get("video_url"), transcripcion=texto,
                           convocatoria=convocatoria,
                           # La que se pase manda; si no, la guardada.
-                          intervinientes=intervinientes or entrada.get("intervinientes"))
+                          intervinientes=intervinientes or entrada.get("intervinientes"),
+                          tipo=entrada.get("tipo"))
 
 
-def _rehacer_acta(fecha: str) -> int:
+def _rehacer_acta(clave: str) -> int:
     """Recompone el .docx desde el informe.json guardado, sin LLM ni coste. Rehace
     también la guía y el .txt, releyendo las objeciones de guardar_objeciones()."""
     from plenos_acta import render_acta
     from plenos_informe import InformePleno
 
-    carpeta = dir_borrador(fecha)
+    fecha = clave[:10]
+    carpeta = dir_borrador(clave)
     ruta_json = carpeta / f"{fecha}-informe.json"
     if not ruta_json.exists():
         print(f"No hay informe guardado en {ruta_json}")
@@ -682,6 +701,9 @@ def main() -> int:
     parser.add_argument("--url", help="URL de un vídeo de YouTube")
     parser.add_argument("--audio", help="Ruta a un fichero de audio local")
     parser.add_argument("--fecha", help="YYYY-MM-DD (con --audio; opcional con --url)")
+    parser.add_argument("--extraordinario", action="store_true",
+                        help="El pleno es extraordinario: va a su propia carpeta "
+                             "(<fecha>-extraordinario) y no pisa un ordinario del mismo día")
     parser.add_argument("--titulo", help="Título del pleno (con --audio; opcional con --url)")
     parser.add_argument("--rehacer-informe", metavar="YYYY-MM-DD",
                         help="Rehace el acta de un pleno ya transcrito (no vuelve a transcribir)")
@@ -698,6 +720,7 @@ def main() -> int:
                              "al transcriptor y al redactor a reconocer nombres y apodos")
     args = parser.parse_args()
     intervinientes = leer_intervinientes(args.intervinientes)
+    tipo = "extraordinaria" if args.extraordinario else "ordinaria"
 
     if args.rehacer_acta:
         return _rehacer_acta(args.rehacer_acta)
@@ -718,7 +741,7 @@ def main() -> int:
         procesar_pleno(None, video_id, titulo, fecha,
                        f"https://www.youtube.com/watch?v={video_id}",
                        convocatoria=leer_convocatoria(args.convocatoria),
-                       intervinientes=intervinientes)
+                       intervinientes=intervinientes, tipo=tipo)
         return 0
 
     if args.audio:
@@ -727,7 +750,7 @@ def main() -> int:
             return 1
         procesar_pleno(args.audio, None, args.titulo, args.fecha, None,
                        convocatoria=leer_convocatoria(args.convocatoria),
-                       intervinientes=intervinientes)
+                       intervinientes=intervinientes, tipo=tipo)
         return 0
 
     parser.print_help()

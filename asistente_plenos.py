@@ -32,7 +32,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # Al ejecutarse desde el repo, los módulos del pipeline están en esta misma carpeta.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from procesar_pleno import (ErrorDeDescarga, dir_borrador, extraer_fecha,
+from procesar_pleno import (ErrorDeDescarga, clave_pleno, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
                             _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
 from plenos_informe import normalizar_fecha
@@ -287,6 +287,12 @@ def preguntar_fecha(consola: Consola, sugerida: str | None) -> str:
             return fecha
 
 
+def preguntar_tipo(consola: Consola) -> str:
+    """Ordinario o extraordinario: decide la carpeta, para que dos plenos del mismo día no se pisen."""
+    consola.decir("\n   ¿Qué tipo de pleno es?")
+    return "extraordinaria" if preguntar_opcion(consola, ["Ordinario", "Extraordinario"]) == 2 else "ordinaria"
+
+
 def preguntar_convocatoria(consola: Consola) -> str | None:
     """Pide el PDF o JPEG del orden del día (opcional)."""
     while True:
@@ -395,7 +401,7 @@ def reintentar_acta(consola: Consola, resultado, fecha: str):
         consola.decir("    instantáneo: no vuelve a redactar nada.")
         if not input("\n   ¿Lo intento ahora?  (s/n)  ").strip().lower().startswith("s"):
             return resultado
-        if ejecutar_pipeline(consola, lambda: _rehacer_acta(fecha)) == 0:
+        if ejecutar_pipeline(consola, lambda: _rehacer_acta(resultado.carpeta.name)) == 0:
             acta = next(iter(sorted(resultado.carpeta.glob(f"{fecha}-acta-*.docx"))), None)
             if acta:
                 return resultado._replace(ruta_acta=acta, fallo_acta="")
@@ -510,15 +516,17 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
     fecha = preguntar_fecha(consola_previa, extraer_fecha(titulo, "") or None)
     if not titulo:
         titulo = f"Pleno del {fecha_en_palabras(fecha)}"
+    tipo = preguntar_tipo(consola_previa)
+    clave = clave_pleno(fecha, tipo)
     consola_previa.cerrar()
 
     # Nuevo registro con la fecha ya conocida.
-    consola = Consola(nuevo_log(inst.registros, fecha), pantalla)
-    consola.anotar(f"pleno nuevo · url={url} · título={titulo} · fecha={fecha}")
+    consola = Consola(nuevo_log(inst.registros, clave), pantalla)
+    consola.anotar(f"pleno nuevo · url={url} · título={titulo} · fecha={fecha} · tipo={tipo}")
 
-    carpeta = dir_borrador(fecha)
+    carpeta = dir_borrador(clave)
     if carpeta.exists():
-        consola.decir("\n   Ya hay un pleno guardado con esa fecha.")
+        consola.decir(f"\n   Ya hay un pleno {'extraordinario' if tipo == 'extraordinaria' else 'ordinario'} guardado con esa fecha.")
         opcion = preguntar_opcion(consola, [
             "Volver a generar solo el documento  (rápido, no vuelve a transcribir)",
             "Empezar de cero y sustituirlo       (hasta 1 hora, según lo que dure el pleno)",
@@ -526,7 +534,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         ])
         if opcion == 1:
             consola.cerrar()
-            rehacer_pleno(inst, pantalla, fecha)
+            rehacer_pleno(inst, pantalla, clave)
             return
         if opcion == 3:
             consola.decir("\n   No se ha hecho nada.")
@@ -549,7 +557,8 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 
     def tarea(fuente=local):
         return procesar_pleno(fuente, video_id, titulo, fecha, None if local else url,
-                              convocatoria=convocatoria, intervinientes=intervinientes)
+                              convocatoria=convocatoria, intervinientes=intervinientes,
+                              tipo=tipo)
 
     try:
         try:
@@ -579,12 +588,12 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 # ── flujo 2: volver a generar el documento de un pleno ya hecho ───────────────
 
 def plenos_guardados(actas: Path) -> list[tuple[str, str]]:
-    """[(fecha, título)] de los plenos ya procesados, del más reciente al más antiguo."""
+    """[(clave, título)] de los plenos ya procesados, del más reciente al más antiguo."""
     salida: list[tuple[str, str]] = []
     if not actas.exists():
         return salida
     for carpeta in sorted(actas.iterdir(), reverse=True):
-        if not (carpeta.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", carpeta.name)):
+        if not (carpeta.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}(-extraordinario)?", carpeta.name)):
             continue
         titulo = ""
         entrada = carpeta / "entrada.json"
@@ -597,19 +606,20 @@ def plenos_guardados(actas: Path) -> list[tuple[str, str]]:
     return salida
 
 
-def rehacer_pleno(inst: Instalacion, pantalla, fecha: str) -> None:
+def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
     """Rehace el documento desde la transcripción guardada, sin descargar ni transcribir."""
-    consola = Consola(nuevo_log(inst.registros, fecha), pantalla, numerar=False)
-    consola.anotar(f"rehacer informe · fecha={fecha}")
+    fecha = clave[:10]
+    consola = Consola(nuevo_log(inst.registros, clave), pantalla, numerar=False)
+    consola.anotar(f"rehacer informe · pleno={clave}")
 
     # Repetir sin convocatoria da lo mismo (temperatura 0) si faltaba el tipo de sesión.
     pdf = None
-    if not (dir_borrador(fecha) / f"{fecha}-convocatoria.pdf").exists():
+    if not (dir_borrador(clave) / f"{fecha}-convocatoria.pdf").exists():
         pdf = preguntar_convocatoria(consola)
 
     intervinientes = None
     try:
-        guardados = json.loads((dir_borrador(fecha) / "entrada.json")
+        guardados = json.loads((dir_borrador(clave) / "entrada.json")
                                .read_text(encoding="utf-8")).get("intervinientes")
     except (OSError, json.JSONDecodeError):
         guardados = None
@@ -621,7 +631,7 @@ def rehacer_pleno(inst: Instalacion, pantalla, fecha: str) -> None:
     consola.decir("   vez: son unos 5 minutos.\n")
 
     try:
-        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(fecha, pdf, intervinientes))
+        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(clave, pdf, intervinientes))
         if resultado is None:
             consola.decir("\n   No he podido rehacer ese pleno: le falta la transcripción.")
             consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
@@ -648,7 +658,8 @@ def flujo_rehacer(inst: Instalacion, pantalla) -> None:
         consola.cerrar()
         return
     consola.decir("\n   ¿De qué pleno quieres volver a generar el documento?")
-    etiquetas = [f"{fecha_en_palabras(f)}   {t}" for f, t in plenos] + ["Volver al menú"]
+    etiquetas = [f"{fecha_en_palabras(c[:10])}{'  (extraordinario)' if len(c) > 10 else ''}   {t}"
+                 for c, t in plenos] + ["Volver al menú"]
     elegido = preguntar_opcion(consola, etiquetas)
     consola.cerrar()
     if elegido <= len(plenos):

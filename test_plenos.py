@@ -1367,6 +1367,12 @@ finally:
     if _actas_previo is not None:
         os.environ["ACTAS_DIR"] = _actas_previo
 
+# Un extraordinario y un ordinario del mismo día no pueden compartir carpeta.
+test("ordinaria: la carpeta es la fecha", _pp.clave_pleno("2026-10-07", "ordinaria"), "2026-10-07")
+test("sin tipo: la carpeta es la fecha", _pp.clave_pleno("2026-10-07"), "2026-10-07")
+test("extraordinaria: carpeta distinta el mismo día",
+     _pp.clave_pleno("2026-10-07", "extraordinaria"), "2026-10-07-extraordinario")
+
 # Dentro del .exe, sys.executable es el propio ejecutable: `sys.executable -m yt_dlp`
 # se relanzaría a sí mismo en vez de descargar nada.
 _yt_previo = os.environ.pop("YT_DLP_EXE", None)
