@@ -259,9 +259,13 @@ def preguntar_url(consola: Consola) -> str:
     while True:
         consola.decir("\n   Pega aquí la dirección del vídeo del pleno en YouTube.")
         consola.decir("   (cópiala del navegador con Ctrl+C y pégala aquí con Ctrl+V)")
+        consola.decir("   Si la grabación está guardada en este ordenador (por ejemplo, un pleno")
+        consola.decir("   en dos vídeos ya unidos), arrastra el archivo hasta aquí.")
         url = input("\n>  ").strip()
         if extraer_video_id(url):
             return url
+        if Path(limpiar_ruta(url)).is_file():
+            return limpiar_ruta(url)
         consola.decir("\n   Eso no parece una dirección de YouTube. Tiene que empezar")
         consola.decir("   por https://www.youtube.com/...  o por https://youtu.be/...")
 
@@ -495,12 +499,14 @@ def actualizar_descargador(consola: Consola) -> None:
 def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
     consola_previa = Consola(nuevo_log(inst.registros), pantalla)
     url = preguntar_url(consola_previa)
-    try:
-        titulo = _titulo_de_youtube(url)
-        consola_previa.decir(f"\n   He encontrado este vídeo:\n      «{titulo}»")
-    except Exception as e:
-        consola_previa.anotar(f"no se pudo leer el título del vídeo: {e}")
-        titulo = ""
+    local = None if extraer_video_id(url) else url  # archivo en el ordenador, sin YouTube
+    titulo = ""
+    if not local:
+        try:
+            titulo = _titulo_de_youtube(url)
+            consola_previa.decir(f"\n   He encontrado este vídeo:\n      «{titulo}»")
+        except Exception as e:
+            consola_previa.anotar(f"no se pudo leer el título del vídeo: {e}")
     fecha = preguntar_fecha(consola_previa, extraer_fecha(titulo, "") or None)
     if not titulo:
         titulo = f"Pleno del {fecha_en_palabras(fecha)}"
@@ -537,11 +543,12 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 
     convocatoria = leer_convocatoria(pdf)
     video_id = extraer_video_id(url)
-    actualizar_descargador(consola)
+    if not local:
+        actualizar_descargador(consola)
     consola.decir("")
 
-    def tarea(fuente=None):
-        return procesar_pleno(fuente, video_id, titulo, fecha, url,
+    def tarea(fuente=local):
+        return procesar_pleno(fuente, video_id, titulo, fecha, None if local else url,
                               convocatoria=convocatoria, intervinientes=intervinientes)
 
     try:
