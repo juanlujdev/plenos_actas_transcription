@@ -10,18 +10,14 @@ Modos:
 
 Opcional en todos los modos de generación:
     --convocatoria <pdf>         el orden del día publicado antes de la sesión
+    --intervinientes <txt>       quienes intervienen, una persona por línea:
+                                 "Nombre completo = cómo la llaman" (apodo opcional)
 
 Flujo: audio → AssemblyAI universal-3.5-pro (diarizado; Groq whisper-large-v3 como
 respaldo) → bucle Gemini (plenos_informe) → acta .docx (plenos_acta) →
-uploads/actas/<fecha>/.
+uploads/actas/<fecha>/. El acta es un BORRADOR para la secretaria; no se publica nada.
 
-El acta generada es un BORRADOR: se envía por email a la secretaria del
-Ayuntamiento, que la revisa, la completa y la sella. El pipeline termina ahí:
-nada de lo que genera se publica en ninguna web.
-
-Se ejecuta en local a propósito: YouTube bloquea las descargas desde IPs de
-datacenter (GitHub Actions) con "confirm you're not a bot", y los plenos son
-mensuales, así que no compensa la infraestructura de sondeo automático.
+Se ejecuta en local: YouTube bloquea las descargas desde IPs de datacenter.
 """
 
 import argparse
@@ -38,7 +34,8 @@ from typing import NamedTuple
 
 import requests
 
-from plenos_informe import Problema, normalizar_fecha, verificar_respuesta
+from plenos_informe import (TOPONIMOS, Problema, normalizar_fecha, parsear_intervinientes,
+                            verificar_respuesta)
 
 # UTF-8 en Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -49,30 +46,18 @@ BORRADOR_DIR = RAIZ / "uploads" / "actas"
 
 
 def dir_borrador(fecha: str) -> Path:
-    """Carpeta de trabajo de un pleno. uploads/ está gitignorado: el borrador de
-    un acta no revisada no tiene por qué acabar versionado en el repositorio.
+    """Carpeta de trabajo de un pleno (uploads/ está gitignorado).
 
-    ACTAS_DIR manda cuando está definida: el ejecutable que usa la funcionaria vive
-    en el PC del Ayuntamiento, donde no hay repo y por tanto no hay uploads/actas.
-    Se lee en cada llamada, no al importar, para que quien la defina no tenga que
-    hacerlo antes del import."""
+    ACTAS_DIR manda si está definida (el .exe corre sin repo); se lee en cada
+    llamada, no al importar."""
     raiz = os.environ.get("ACTAS_DIR")
     return (Path(raiz) if raiz else BORRADOR_DIR) / fecha
 
 
 def leer_convocatoria(ruta: str | None) -> bytes | None:
-    """Lee el PDF del orden del día tal cual, sin extraer texto.
-
-    Las convocatorias del Ayuntamiento son escaneos: un JPEG dentro de un PDF, sin
-    capa de texto. Extraerlas exigiría OCR; en su lugar el PDF viaja entero a Gemini,
-    que lee escaneos y además conserva la maquetación (numeración, expedientes).
-
-    También admite la convocatoria como imagen JPEG suelta —lo normal cuando alguien
-    la fotografía o escanea sin pasarla por PDF—, envuelta aquí mismo en un PDF de una
-    sola página. Así el resto del pipeline no se entera: al modelo le sigue viajando un
-    PDF por el plugin file-parser, y la copia que se guarda en el borrador para
-    --rehacer-informe también es un PDF válido.
-    """
+    """Lee el PDF del orden del día tal cual (son escaneos sin capa de texto: viaja
+    entero a Gemini). Un JPEG suelto se envuelve en un PDF de una página para que el
+    resto del pipeline siga recibiendo siempre un PDF."""
     if ruta is None:
         return None
     origen = Path(ruta)
@@ -115,13 +100,10 @@ def unir_segmentos(respuestas: list[tuple[float, dict]]) -> str:
 
 
 def formatear_utterances(utterances: list[dict]) -> str:
-    """Convierte las intervenciones diarizadas de AssemblyAI al mismo formato
-    [HH:MM:SS] que produce unir_segmentos, anteponiendo la etiqueta de locutor.
+    """Intervenciones diarizadas de AssemblyAI al formato [HH:MM:SS] de unir_segmentos.
 
-    La etiqueta ("A", "B"...) la asigna el modelo por voz, no por identidad: dice
-    que dos intervenciones son de la misma persona, no de quién. Se escribe como
-    "Interviniente A" para que el redactor no la confunda con un nombre; quién es
-    cada etiqueta solo lo puede decir la propia grabación."""
+    La etiqueta es una voz, no una identidad: se escribe "Interviniente A" para que
+    el redactor no la confunda con un nombre."""
     return "\n".join(
         f"{_hms(u['start'] / 1000)} Interviniente {u['speaker']}: {u['text'].strip()}"
         for u in utterances)
@@ -137,9 +119,7 @@ def extraer_video_id(url: str) -> str | None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _ejecutar(cmd: list[str]) -> None:
-    """subprocess.run con captura; si falla, re-lanza incluyendo el final del
-    stderr — sin esto el CalledProcessError solo enseña el comando y el error
-    real (p. ej. el "confirm you're not a bot" de YouTube) queda invisible."""
+    """subprocess.run que, al fallar, incluye el final del stderr en el error."""
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
@@ -148,33 +128,24 @@ def _ejecutar(cmd: list[str]) -> None:
 
 
 class ErrorDeDescarga(RuntimeError):
-    """Fallo al bajar el audio de YouTube. Tiene una salida propia —usar una
-    grabación que ya esté en el ordenador—, así que el asistente necesita
-    distinguirlo de cualquier otro fallo del pipeline."""
+    """Fallo al bajar el audio de YouTube; el asistente lo distingue porque tiene
+    salida propia (usar una grabación local)."""
 
 
 def _comando_yt_dlp() -> list[str]:
-    """Cómo invocar a yt-dlp. Dentro del ejecutable empaquetado no hay intérprete
-    de Python suelto —`sys.executable` es el propio .exe y `-m yt_dlp` se
-    relanzaría a sí mismo—, así que ahí se usa el yt-dlp.exe oficial que viaja en
-    la carpeta y se autoactualiza. YT_DLP_EXE la define el asistente."""
+    """Cómo invocar a yt-dlp: YT_DLP_EXE (la define el asistente) o el módulo."""
     exe = os.environ.get("YT_DLP_EXE")
     if exe:
         return [exe]
     if getattr(sys, "frozen", False):
-        # Empaquetado no hay intérprete suelto: `sys.executable -m yt_dlp` relanzaría el
-        # propio asistente, con la salida capturada y sin timeout, y quedaría una ventana
-        # muerta. Si el binario no está —antivirus, borrado—, hay que decirlo.
+        # Empaquetado, `sys.executable -m yt_dlp` relanzaría el propio asistente.
         raise ErrorDeDescarga("no encuentro el programa que descarga los vídeos (yt-dlp.exe)")
     return [sys.executable, "-m", "yt_dlp"]
 
 
 def descargar_audio(url: str, destino_dir: str) -> str:
-    """Descarga la pista de audio tal cual la sirve YouTube (suele ser webm/opus)
-    y devuelve su ruta, sin convertir nada: de eso ya se encarga trocear_audio en
-    una sola pasada. Pedirle a yt-dlp que convierta a m4a aquí sería una
-    recodificación de más — más lenta y con una generación extra de pérdida
-    (opus→aac→aac en vez de opus→aac)."""
+    """Descarga el audio tal cual lo sirve YouTube y devuelve su ruta. No se
+    convierte aquí: sería una recodificación de más."""
     try:
         _ejecutar(_comando_yt_dlp() + ["-f", "bestaudio/best",
                                        "-o", os.path.join(destino_dir, "pleno.%(ext)s"),
@@ -188,12 +159,8 @@ def descargar_audio(url: str, destino_dir: str) -> str:
 
 
 def trocear_audio(ruta: str, destino_dir: str, segundos: int = 1800) -> list[str]:
-    """Trocea el audio en fragmentos de `segundos`, recodificando a mono 64 kbps
-    (30 min ≈ 14 MB, holgado frente al tope de 25 MB por fichero del plan
-    gratuito de Groq). Recodificar cuesta un par de minutos de CPU, pero es lo
-    único que garantiza el tamaño sea cual sea el original de YouTube.
-    Mono porque whisper convierte a mono 16 kHz igualmente; 64k en vez de los
-    32k de la spec para dar margen de calidad en salas con eco y micro lejano."""
+    """Trocea el audio en fragmentos de `segundos`, recodificado a mono 64 kbps
+    (30 min ≈ 14 MB, bajo el tope de 25 MB por fichero de Groq)."""
     patron = os.path.join(destino_dir, "chunk_%03d.m4a")
     _ejecutar(["ffmpeg", "-y", "-i", ruta, "-vn", "-ac", "1", "-b:a", "64k",
                "-f", "segment", "-segment_time", str(segundos), patron])
@@ -208,8 +175,7 @@ AAI_URL = "https://api.assemblyai.com"
 AAI_MODELO = "universal-3-5-pro"
 AAI_SONDEO = 20  # s entre sondeos; no hay webhook porque esto corre en tu PC
 
-# Contexto en prosa para el modelo (5-50 palabras según la doc; frases completas,
-# no una lista de palabras sueltas — para eso está keyterms).
+# Contexto en prosa (5-50 palabras según la doc); las palabras sueltas van en keyterms.
 AAI_PROMPT = (
     "Sesión plenaria del Ayuntamiento de Enguídanos, provincia de Cuenca, España. "
     "Intervienen la Alcaldía, seis concejales, la secretaria municipal y público "
@@ -219,8 +185,7 @@ AAI_PROMPT = (
     "contratación, decretos de alcaldía y ruegos y preguntas."
 )
 
-# Vocabulario que Whisper deformaba sistemáticamente. Tope: 1000 términos, 6 palabras
-# por término. Se escriben tal cual deben salir en la transcripción.
+# Tope: 1000 términos, 6 palabras por término.
 AAI_KEYTERMS = [
     "Sergio de Fez Cerezuela", "Lorena Luján Chujfi", "María Rosario Cerdán Pérez",
     "Mario Cerdán Ochoa", "Joaquín Martínez", "Pedro José Martínez Martínez",
@@ -231,10 +196,10 @@ AAI_KEYTERMS = [
     "ordenanza fiscal", "presupuesto municipal", "moción", "dación de cuenta",
     "decreto de alcaldía", "ruegos y preguntas", "por unanimidad", "abstención",
     "sesión ordinaria", "sesión extraordinaria", "expediente",
+    *TOPONIMOS,
 ]
 
-# Red de seguridad determinista sobre keyterms. `to` admite UNA sola palabra (`from`
-# sí varias) y distingue mayúsculas, así que aquí solo caben apellidos sueltos.
+# `to` admite UNA sola palabra (`from` varias) y distingue mayúsculas.
 AAI_SPELLING = [
     {"from": ["chufi", "chufy", "chuji", "chusfi"], "to": "Chujfi"},
     {"from": ["lujan"], "to": "Luján"},
@@ -245,14 +210,8 @@ AAI_SPELLING = [
 
 
 def _subir_audio(ruta: str, cabeceras: dict, intentos: int = 4) -> str:
-    """Sube el audio y devuelve su URL temporal en AssemblyAI.
-
-    Un pleno son 100-200 MB y la subida dura minutos por una línea doméstica: que la
-    conexión se parta a mitad no es excepcional, es lo normal cada tantas ejecuciones
-    (`SSLEOFError`, `ConnectionError`). Sin reintento, ese corte tira por la borda la
-    descarga y obliga a repetirlo todo. El fichero se reabre en cada intento porque el
-    cuerpo ya consumido no se puede reenviar.
-    """
+    """Sube el audio y devuelve su URL temporal en AssemblyAI. Reintenta porque la
+    subida (100-200 MB) se corta a menudo; el fichero se reabre en cada intento."""
     for intento in range(intentos):
         try:
             with open(ruta, "rb") as f:
@@ -269,12 +228,21 @@ def _subir_audio(ruta: str, cabeceras: dict, intentos: int = 4) -> str:
             time.sleep(espera)
 
 
-def transcribir_assemblyai(ruta: str) -> str:
-    """Sube el audio entero y devuelve la transcripción diarizada.
+def keyterms_del_pleno(intervinientes: list[dict] | None) -> list[str]:
+    """AAI_KEYTERMS más nombres y apodos de este pleno, sin repetir (máx. 6 palabras por término)."""
+    extra = [t for p in intervinientes or [] for t in (p["nombre"], *p.get("apodos", []))
+             if 0 < len(t.split()) <= 6]
+    vistos, salida = set(), []
+    for t in [*AAI_KEYTERMS, *extra]:
+        if t.lower() not in vistos:
+            vistos.add(t.lower())
+            salida.append(t)
+    return salida
 
-    Sin trocear: el tope es 5 GB / 10 h por petición, no los 25 MB por fichero de
-    Groq. El pleno viaja tal cual lo deja yt-dlp, sin recodificar.
-    """
+
+def transcribir_assemblyai(ruta: str, intervinientes: list[dict] | None = None) -> str:
+    """Sube el audio entero (sin trocear ni recodificar) y devuelve la transcripción
+    diarizada. `intervinientes`: [{'nombre', 'apodos'}] o None; amplían los keyterms."""
     cabeceras = {"authorization": os.environ["ASSEMBLYAI_API_KEY"]}
     print("  subiendo el audio...")
     url_audio = _subir_audio(ruta, cabeceras)
@@ -284,48 +252,22 @@ def transcribir_assemblyai(ruta: str) -> str:
         "speech_models": [AAI_MODELO],
         "language_code": "es",           # fijo: no dejamos que lo detecte
         "speaker_labels": True,
-        # Rango en vez de `speakers_expected`: no todos hablan en todas las sesiones (puede
-        # haber un pleno corto con solo 4 concejales) y además hay público, que sí interviene
-        # —sobre todo en ruegos y preguntas—, en número variable de un pleno a otro.
-        # El máximo va HOLGADO A PROPÓSITO, por encima de lo que se necesita casi nunca:
-        # partir a una persona en dos etiquetas es un fallo recuperable (esa voz queda "no
-        # identificada", molesto pero honesto); fundir a dos personas en una etiqueta no lo
-        # es, porque el generador propaga esa etiqueta a un nombre real (ver DIARIZACION en
-        # plenos_informe.py). Es justo lo que pasó en el pleno del 3 de septiembre de 2026:
-        # AssemblyAI fusionó en una sola etiqueta a quien presidía y a una vecina —la
-        # presidenta de la Asociación de Jubilados— que intervino tres horas después, y el
-        # acta acabó atribuyéndole a la Teniente de Alcalde unos ruegos que formuló la
-        # vecina. En un documento que se sella ese riesgo no es aceptable, así que aquí se
-        # paga con margen: 4-7 concejales + secretaria + 3-4 vecinos son unas 12 voces
-        # reales como mucho; 15 deja hueco de sobra sin que "más etiquetas de las que hay"
-        # tenga coste real (una etiqueta de más simplemente no se usa).
-        # Los dos son LÍMITES DUROS, no pistas (doc de AssemblyAI): por debajo del mínimo
-        # el modelo parte voces hasta alcanzarlo, y por encima del máximo "the additional
-        # speakers are merged into existing labels". Por eso el mínimo NO se baja a la
-        # ligera: empuja a separar, que es el lado seguro. Los números salen de la
-        # corporación real: seis concejales, la delegada y quien preside son ocho, y
-        # aunque falte alguno NUNCA bajan de seis; con los vecinos que asisten e
-        # intervienen, nunca pasan de doce. De ahí el mínimo en ese suelo de seis, y el
-        # máximo con margen por encima del techo de doce: pasarse de máximo no cuesta
-        # nada (una etiqueta de más no se usa) y quedarse corto fusiona dos personas en
-        # una etiqueta, que es el fallo del pleno del 3 de septiembre de 2026.
+        # Rango HOLGADO A PROPÓSITO, y ambos son límites duros (por encima del máximo,
+        # AssemblyAI funde voces): partir a una persona en dos etiquetas es recuperable,
+        # fundir a dos en una no, porque el generador propaga la etiqueta a un nombre real.
+        # Mínimo 6 = suelo de la corporación; máximo 15 = margen sobre las ~12 voces reales.
         "speaker_options": {"min_speakers_expected": 6, "max_speakers_expected": 15},
         "prompt": AAI_PROMPT,
-        "keyterms_prompt": AAI_KEYTERMS,
+        "keyterms_prompt": keyterms_del_pleno(intervinientes),
         "custom_spelling": AAI_SPELLING,
-        # disfluencies se queda en false (por defecto): un acta no recoge los "eh".
     }
     r = requests.post(f"{AAI_URL}/v2/transcript", headers=cabeceras, json=cuerpo, timeout=60)
     verificar_respuesta(r)
     transcript_id = r.json()["id"]
 
     print(f"  transcribiendo (id {transcript_id}); un pleno tarda unos minutos...")
-    # Un fallo de RED al sondear no significa que la transcripción se haya perdido:
-    # el trabajo sigue corriendo en AssemblyAI (y ya se ha pagado), así que un corte
-    # aquí solo debe anotarse y reintentar el sondeo, no abortar el pipeline entero.
-    # Un tope de fallos consecutivos evita quedarse sondeando para siempre si la
-    # conexión se ha caído de verdad; los errores que SÍ devuelve la propia API
-    # (status == "error") siguen abortando de inmediato, como antes.
+    # Un corte de red al sondear no pierde el trabajo (sigue en AssemblyAI): se
+    # reintenta hasta 10 fallos seguidos. status == "error" aborta de inmediato.
     fallos_seguidos = 0
     while True:
         time.sleep(AAI_SONDEO)
@@ -357,9 +299,7 @@ ESPERA_MAXIMA = 3900  # 65 min: cubre la ventana horaria del plan gratuito
 
 
 def _espera_tras_error(respuesta, intento: int) -> float:
-    """Segundos a esperar antes de reintentar. Groq manda `retry-after` cuando
-    se agota el cupo (el horario del plan gratuito pide ~1h, mucho más que el
-    backoff); si no viene la cabecera, backoff exponencial de 2/4/8 min."""
+    """Segundos a esperar: el `retry-after` de Groq o, sin él, backoff de 2/4/8 min."""
     cabecera = respuesta.headers.get("retry-after") if respuesta is not None else None
     if cabecera:
         try:
@@ -408,18 +348,13 @@ def transcribir_chunks(chunks: list[str], segundos_chunk: int = 1800) -> str:
     return unir_segmentos(respuestas)
 
 
-def transcribir(ruta_audio: str, tmp: str) -> str:
-    """AssemblyAI si hay clave; Groq solo si NO la hay.
-
-    Groq no diariza —el acta necesita saber quién interviene— y exige trocear con
-    ffmpeg, que no está en el PC donde corre el ejecutable. Degradar en silencio a
-    ese camino en un documento que se sella es peor que parar: si AssemblyAI falla
-    teniendo clave, se para y se dice, y la transcripción se reintenta luego sin
-    volver a descargar nada.
-    """
+def transcribir(ruta_audio: str, tmp: str, intervinientes: list[dict] | None = None) -> str:
+    """AssemblyAI si hay clave; Groq solo si NO la hay. Si AssemblyAI falla teniendo
+    clave se para: degradar en silencio a Groq (sin diarización) no es aceptable."""
     if os.environ.get("ASSEMBLYAI_API_KEY"):
         print(f"transcribiendo con AssemblyAI {AAI_MODELO} (diarizado)...")
-        return transcribir_assemblyai(ruta_audio)
+        return (transcribir_assemblyai(ruta_audio, intervinientes) if intervinientes
+                else transcribir_assemblyai(ruta_audio))
     print("troceando audio...")
     chunks = trocear_audio(ruta_audio, tmp)
     print(f"transcribiendo {len(chunks)} fragmentos con Groq...")
@@ -446,15 +381,9 @@ def _ruta_objeciones(carpeta: Path, fecha: str) -> Path:
 
 
 def guardar_objeciones(carpeta: Path, fecha: str, pendientes: list) -> None:
-    """Persiste las objeciones del auditor junto al informe: son parte de lo caro del
-    pipeline —hasta tres vueltas de LLM— y hasta ahora vivían solo en la consola
-    (ver wiki/concepts/persistir-lo-caro-antes-de-lo-fragil.md). Sin esto, un fallo al
-    componer el .docx después del bucle se las llevaba por delante para siempre, y
-    --rehacer-acta generaba la guía sin su sección más valiosa.
-
-    Se sobrescribe siempre y se borra si ya no queda ninguna objeción, con el mismo
-    criterio que escribir_comprobaciones() en plenos_guia.py: el fichero tiene que
-    reflejar la última corrida, nunca arrastrar las objeciones de la anterior."""
+    """Persiste las objeciones del auditor junto al informe, para que
+    --rehacer-acta las recupere. Se sobrescribe, y se borra si ya no hay ninguna:
+    refleja la última corrida."""
     ruta = _ruta_objeciones(carpeta, fecha)
     if not pendientes:
         ruta.unlink(missing_ok=True)
@@ -463,10 +392,7 @@ def guardar_objeciones(carpeta: Path, fecha: str, pendientes: list) -> None:
 
 
 def cargar_objeciones(carpeta: Path, fecha: str) -> list:
-    """Relee las objeciones que guardó guardar_objeciones, como `Problema`. Lista
-    vacía si el fichero no existe: plenos generados antes de este cambio, o plenos
-    que ya no tienen ninguna objeción pendiente — en los dos casos la guía se compone
-    igual, solo que sin la sección de comprobaciones."""
+    """Relee las objeciones de guardar_objeciones; lista vacía si no hay fichero."""
     ruta = _ruta_objeciones(carpeta, fecha)
     if not ruta.exists():
         return []
@@ -476,22 +402,8 @@ def cargar_objeciones(carpeta: Path, fecha: str) -> list:
 def _componer_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
                    destino: Path, fecha: str) -> tuple:
     """Compone la guía de verificación HTML y el aviso "COMPROBAR ANTES DE SELLAR.txt"
-    junto al acta, a partir de las mismas objeciones ya traducidas a términos legibles.
-    Sin LLM y sin coste, como plenos_guia entero.
-
-    Los dos ficheros se generan juntos y a partir de los mismos datos a propósito: antes,
-    el .txt lo escribía solo asistente_plenos.py (y solo cuando la funcionaria usaba el
-    menú), así que --rehacer-acta dejaba el acta y la guía al día pero el .txt se quedaba
-    con la corrida anterior —pudiendo llegar a citar una ruta interna ("orden_del_dia[2].
-    texto") que ya no existía—. Generarlo aquí garantiza que los tres ficheros cuenten
-    siempre lo mismo, se ejecute desde donde se ejecute.
-
-    Un try/except por fichero, no uno para los dos. El 2026-09-03 la guía HTML de la
-    corrida anterior estaba abierta y Windows dio PermissionError al reescribirla; con un
-    único try eso se llevó por delante también el .txt, que el asistente reescribió luego
-    por su cuenta sin las objeciones legibles. La funcionaria acabó leyendo
-    "orden_del_dia[0]" sin frase que buscar ni minuto que oír — justo lo que este módulo
-    existe para evitar. El .txt va primero porque no depende de la guía para nada.
+    (sin LLM), a partir de las mismas objeciones, para que acta, guía y .txt cuenten
+    lo mismo. Un try/except por fichero: que falle uno no tumba el otro.
 
     Devuelve (ruta_guia, objeciones); ruta_guia es None si la guía no se pudo escribir."""
     from plenos_guia import escribir_comprobaciones, objecion_legible, render_guia
@@ -508,8 +420,7 @@ def _componer_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
         try:
             render_guia(informe, entrada, transcripcion, pendientes, str(ruta_guia))
         except PermissionError:
-            # La guía de la corrida anterior abierta en el navegador bloquea el fichero en
-            # Windows. Escribir al lado es mejor que quedarse sin guía por eso.
+            # Guía anterior abierta en el navegador: Windows bloquea el fichero.
             ruta_guia = destino / f"{fecha}-guia-de-verificacion-{time.strftime('%H%M')}.html"
             render_guia(informe, entrada, transcripcion, pendientes, str(ruta_guia))
             print(f"\nLa guía anterior estaba abierta y no se ha podido sobrescribir; "
@@ -522,21 +433,12 @@ def _componer_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
 
 
 class ResultadoPleno(NamedTuple):
-    """Lo que el asistente necesita saber al terminar: dónde ha quedado todo, si
-    hay acta y qué objeciones sostuvo el auditor hasta el final.
+    """Resultado para el asistente: carpeta, acta, objeciones pendientes y guía.
 
-    `ruta_guia` y `objeciones` van al final y con valor por defecto para no romper a
-    quien ya desempaqueta este NamedTuple por posición. `objeciones` son las mismas
-    `pendientes` del auditor, pero legibles (ver plenos_guia.objecion_legible): dónde,
-    qué dice el acta, qué se oye en la grabación y el enlace al minuto.
-
-    `fallo_acta` distingue las DOS causas de que `ruta_acta` sea None, que no se
-    arreglan igual: vacío = el tipo de sesión no consta (hace falta la convocatoria y
-    volver a pasar por el modelo); con texto = el .docx no se pudo escribir aunque el
-    informe está bien (casi siempre el documento abierto en Word), y eso se recompone
-    gratis con --rehacer-acta. Sin este campo el asistente daba siempre el primer
-    motivo, que en el segundo caso es falso y mandaba a la funcionaria a pagar otro
-    bucle de LLM para arreglar algo que se arregla cerrando Word."""
+    `objeciones` son las `pendientes` en forma legible (plenos_guia.objecion_legible).
+    `fallo_acta` distingue por qué `ruta_acta` es None: vacío = el tipo de sesión no
+    consta (hay que volver al modelo); con texto = el .docx no se escribió (casi
+    siempre abierto en Word) y se arregla con --rehacer-acta."""
     carpeta: Path
     ruta_acta: Path | None
     pendientes: list
@@ -545,15 +447,25 @@ class ResultadoPleno(NamedTuple):
     fallo_acta: str = ""
 
 
+def fijar_fecha(informe, fecha: str):
+    """La fecha del pleno es la de quien lo procesa, no la que el modelo entienda de la grabación."""
+    if informe.fecha_pleno and informe.fecha_pleno != fecha:
+        print(f"  ⚠ el modelo fechó el pleno el {informe.fecha_pleno}; "
+              f"se usa la fecha indicada al procesarlo, {fecha}")
+    return informe.model_copy(update={"fecha_pleno": fecha})
+
+
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    fecha: str, video_url: str | None,
                    transcripcion: str | None = None,
-                   convocatoria: bytes | None = None) -> ResultadoPleno:
+                   convocatoria: bytes | None = None,
+                   intervinientes: list[dict] | None = None) -> ResultadoPleno:
     """Pipeline completo de un pleno: audio → transcripción → acta → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
     transcripcion: si se pasa, se salta el audio y la transcripción (--rehacer-informe).
     convocatoria: bytes del PDF del orden del día, o None.
+    intervinientes: [{'nombre', 'apodos'}] o None; se guarda en entrada.json para --rehacer-informe.
     """
     from plenos_informe import MAX_VUELTAS, _plural, bucle_informe
     from plenos_acta import render_acta
@@ -563,7 +475,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
             if fuente_audio is None:
                 print(f"descargando audio de {video_url}...")
                 fuente_audio = descargar_audio(video_url, tmp)
-            transcripcion = transcribir(fuente_audio, tmp)
+            transcripcion = (transcribir(fuente_audio, tmp, intervinientes) if intervinientes
+                             else transcribir(fuente_audio, tmp))
 
     destino = dir_borrador(fecha)
     destino.mkdir(parents=True, exist_ok=True)
@@ -572,33 +485,27 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     ruta_entrada = destino / "entrada.json"
     entrada = {"video_id": video_id, "fecha": fecha, "titulo": titulo,
                "video_url": video_url}
+    if intervinientes:
+        entrada["intervinientes"] = intervinientes
 
-    # La transcripción se guarda ANTES del bucle LLM, no después: es la única parte
-    # del pipeline que cuesta dinero y no se puede repetir gratis. Si el bucle falla
-    # —el modelo devuelve basura, se corta la luz—, --rehacer-informe la reutiliza en
-    # vez de obligar a pagar otra transcripción entera.
+    # La transcripción se guarda ANTES del bucle LLM para que --rehacer-informe la
+    # reutilice si el bucle falla.
     if convocatoria:
-        # Se guarda junto al resto para que --rehacer-informe la reutilice sin
-        # obligarte a volver a localizar el PDF cada vez que ajustas los prompts.
+        # Para que --rehacer-informe la reutilice.
         (destino / f"{fecha}-convocatoria.pdf").write_bytes(convocatoria)
     ruta_md.write_text(f"# Transcripción — {titulo}\n\n{transcripcion}\n", encoding="utf-8")
     _guardar_json(ruta_entrada, entrada)
     print(f"transcripción guardada en {ruta_md}")
 
     print("generando acta (bucle generador→auditor→corrector)...")
-    informe, pendientes = bucle_informe(transcripcion, convocatoria)
+    informe, pendientes = (bucle_informe(transcripcion, convocatoria, intervinientes=intervinientes)
+                           if intervinientes else bucle_informe(transcripcion, convocatoria))
 
-    # `fecha` viene de --fecha o del título del vídeo, no del modelo: es un dato que
-    # la herramienta conoce con certeza. Si en la grabación no se dice, no tiene
-    # sentido dejarle a la secretaria un hueco que podemos rellenar. Solo rellena el
-    # null; nunca pisa una fecha que sí conste en la grabación.
-    if not informe.fecha_pleno:
-        informe = informe.model_copy(update={"fecha_pleno": fecha})
+    informe = fijar_fecha(informe, fecha)
 
     ruta_json.write_text(informe.model_dump_json(indent=2), encoding="utf-8")
     _guardar_json(ruta_entrada, dict(entrada, resumen_corto=informe.resumen_corto))
-    # Se guarda YA, antes de componer nada: son las mismas tres vueltas de LLM que el
-    # informe, y hasta ahora solo vivían en la consola (ver guardar_objeciones).
+    # Antes de componer nada: es trabajo de LLM ya pagado.
     guardar_objeciones(destino, fecha, pendientes)
 
     ruta_acta = None
@@ -608,9 +515,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
         try:
             render_acta(informe, str(ruta_acta))
         except Exception as e:
-            # Llegar hasta aquí cuesta la transcripción y hasta tres vueltas de LLM. Que
-            # un fallo al componer el documento se lleve todo eso por delante no es
-            # aceptable: el JSON ya está en disco y --rehacer-acta lo recompone gratis.
+            # El JSON ya está en disco: --rehacer-acta lo recompone gratis.
             ruta_acta = None
             fallo_acta = f"{type(e).__name__}: {e}"
             print(f"\nEl informe está guardado, pero el acta no se ha podido componer:"
@@ -618,9 +523,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                   f"\nCorrige el JSON si hace falta y vuelve a intentarlo SIN coste:"
                   f"\n  python scripts/procesar_pleno.py --rehacer-acta {fecha}")
 
-    # La guía es independiente del acta: no necesita plantilla ni tipo de sesión, así
-    # que se compone aunque el .docx haya fallado arriba. Mismo criterio que ese
-    # try/except — si esto falla, ni el acta ni el informe se pierden por ello.
+    # La guía no depende del acta: se compone aunque el .docx haya fallado.
     ruta_guia, objeciones = _componer_guia(informe, entrada, transcripcion, pendientes,
                                            destino, fecha)
 
@@ -629,8 +532,6 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     if ruta_acta:
         print(f"Acta:           {ruta_acta}")
     else:
-        # Sin tipo de sesión no se puede elegir plantilla, y elegirla a ciegas
-        # produciría un acta con el encabezado equivocado.
         print("\nNO se ha generado el acta: el tipo de sesión (ordinaria o "
               "extraordinaria) no consta en la grabación.\nCorrige `tipo_sesion` en el "
               f"JSON o vuelve a intentarlo con --rehacer-informe {fecha}.")
@@ -646,8 +547,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
 
     print("\nRevisa el acta contra la grabación y envíala a la secretaria.")
 
-    # El cierre es lo último que queda en pantalla tras 20 minutos de log: tiene que
-    # decir en una línea si esto se puede enviar a la secretaria o no.
+    # Lo último en pantalla: debe decir en una línea si se puede enviar o no.
     if not ruta_acta:
         _banner("ERROR", f"no hay acta: el .docx no se pudo escribir ({fallo_acta})."
                 if fallo_acta else
@@ -664,10 +564,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
 
 
 # ── cierre de la ejecución ────────────────────────────────────────────────────
-# El pipeline tarda 20 minutos y escupe cientos de líneas; el resultado tiene que
-# leerse de un vistazo. Color solo si la salida es una terminal: esto se ejecuta a
-# menudo con `| tee ~/pleno.log` y ahí los códigos ANSI solo ensucian el fichero.
-# NO_COLOR es la convención de https://no-color.org.
+# Color solo si la salida es una terminal (con `| tee` los códigos ANSI ensucian el
+# fichero). NO_COLOR: https://no-color.org.
 
 _ANSI = {"VERDE": "42;30", "AMARILLO": "43;30", "ROJO": "41;97"}
 _NIVELES = {"SUCCESS": "VERDE", "WARNING": "AMARILLO", "ERROR": "ROJO"}
@@ -694,10 +592,19 @@ def _titulo_de_youtube(url: str) -> str:
     return r.json()["title"]
 
 
-def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None) -> "ResultadoPleno | None":
-    """Regenera el acta de un pleno ya transcrito, reutilizando su transcripción.
-    Solo pasa por Gemini: no descarga el audio ni vuelve a transcribirlo. Sirve
-    para reprocesar tras ajustar los prompts."""
+def leer_intervinientes(ruta: str | None) -> list[dict] | None:
+    """Lee el fichero de intervinientes (ver plenos_informe.parsear_intervinientes)."""
+    if not ruta:
+        return None
+    origen = Path(ruta)
+    if not origen.exists():
+        raise FileNotFoundError(f"no existe el fichero de intervinientes: {origen}")
+    return parsear_intervinientes(origen.read_text(encoding="utf-8")) or None
+
+
+def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None,
+                     intervinientes: list[dict] | None = None) -> "ResultadoPleno | None":
+    """Regenera el acta reutilizando la transcripción guardada (solo pasa por Gemini)."""
     borrador = dir_borrador(fecha)
     entrada = _cargar_json(borrador / "entrada.json", {})
     if not entrada:
@@ -709,8 +616,7 @@ def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None) -> "Result
         print(f"Falta la transcripción de {fecha}")
         return None
 
-    # La convocatoria que se pase manda; si no se pasa ninguna, se reutiliza la que
-    # quedó guardada en el borrador, para poder iterar prompts sin volver a buscarla.
+    # La que se pase manda; si no, la guardada en el borrador.
     guardada = borrador / f"{fecha}-convocatoria.pdf"
     convocatoria = leer_convocatoria(
         convocatoria_pdf or (str(guardada) if guardada.exists() else None))
@@ -720,22 +626,14 @@ def _rehacer_informe(fecha: str, convocatoria_pdf: str | None = None) -> "Result
         texto = texto.split("\n\n", 1)[-1]  # quitar el encabezado del fichero
     return procesar_pleno(None, entrada.get("video_id"), entrada["titulo"], fecha,
                           entrada.get("video_url"), transcripcion=texto,
-                          convocatoria=convocatoria)
+                          convocatoria=convocatoria,
+                          # La que se pase manda; si no, la guardada.
+                          intervinientes=intervinientes or entrada.get("intervinientes"))
 
 
 def _rehacer_acta(fecha: str) -> int:
-    """Vuelve a componer el .docx desde el informe.json ya guardado. No llama a ningún
-    LLM ni transcribe: coste cero. Es la forma de iterar el formato del acta —plantilla,
-    encabezado, fórmulas— sin volver a pagar lo que ya está pagado, y de recuperar el
-    documento cuando el render falla después de un bucle de LLM que sí costó dinero.
-
-    Rehace también la guía de verificación y el aviso "COMPROBAR ANTES DE SELLAR.txt":
-    es igual de gratis, y así se puede iterar su formato sin pagar nada. Las objeciones
-    del auditor se releen del fichero que guardar_objeciones() escribió junto al
-    informe, así que los dos salen con su sección de «puntos que conviene comprobar»
-    igual que en la corrida original —y el .txt nunca se queda desfasado respecto al
-    acta y la guía que sí se acaban de recomponer—. Un pleno anterior a este cambio
-    (sin ese fichero) sigue funcionando: salen sin esa sección, no revienta."""
+    """Recompone el .docx desde el informe.json guardado, sin LLM ni coste. Rehace
+    también la guía y el .txt, releyendo las objeciones de guardar_objeciones()."""
     from plenos_acta import render_acta
     from plenos_informe import InformePleno
 
@@ -745,11 +643,11 @@ def _rehacer_acta(fecha: str) -> int:
         print(f"No hay informe guardado en {ruta_json}")
         return 1
     informe = InformePleno.model_validate_json(ruta_json.read_text(encoding="utf-8"))
+    informe = fijar_fecha(informe, _cargar_json(carpeta / "entrada.json", {}).get("fecha", fecha))
     if informe.tipo_sesion not in ("ordinaria", "extraordinaria"):
         print("El tipo de sesión no consta en el informe: no se puede elegir plantilla.")
         return 1
-    # El JSON se reescribe porque los validadores del esquema normalizan al cargarlo
-    # (fechas, horas, la fórmula del acuerdo): así el fichero refleja lo que se compuso.
+    # Se reescribe porque los validadores del esquema normalizan al cargar.
     ruta_json.write_text(informe.model_dump_json(indent=2), encoding="utf-8")
     ruta_acta = carpeta / f"{fecha}-acta-{informe.tipo_sesion}.docx"
     fallo = ""
@@ -757,11 +655,7 @@ def _rehacer_acta(fecha: str) -> int:
         render_acta(informe, str(ruta_acta))
         print(f"Acta: {ruta_acta}")
     except Exception as e:
-        # Mismo criterio que procesar_pleno(): la guía y el .txt no tienen ninguna culpa
-        # de que el .docx no se haya podido escribir, y son justo lo que se estaba
-        # regenerando, así que se avisa y se sigue con ellos en vez de abortar la función
-        # entera. En la práctica, la causa más frecuente es el propio .docx abierto en
-        # Word, que lo bloquea para escritura (PermissionError) — nos ha pasado de verdad.
+        # Se avisa y se sigue con la guía y el .txt. Causa habitual: .docx abierto en Word.
         print(f"\nEl acta no se ha podido componer: {type(e).__name__}: {e}"
               f"\nSi el mensaje habla de permisos, seguramente el documento esté abierto "
               f"en Word: ciérralo y vuelve a lanzar --rehacer-acta {fecha}.")
@@ -779,8 +673,7 @@ def _rehacer_acta(fecha: str) -> int:
             print(f"Guía de verificación: {ruta_guia}")
     else:
         print(f"(sin transcripción en {ruta_md}: no se ha podido rehacer la guía)")
-    # La guía y el .txt se rehacen igual, pero el código de salida habla del .docx:
-    # es lo que el asistente necesita para saber si el reintento sirvió de algo.
+    # El código de salida habla solo del .docx.
     return 1 if fallo else 0
 
 
@@ -799,13 +692,18 @@ def main() -> int:
                         help="PDF del orden del día publicado antes de la sesión: "
                              "de ahí salen los títulos exactos, la numeración y los "
                              "expedientes. Puede ser un escaneo")
+    parser.add_argument("--intervinientes", metavar="TXT",
+                        help="Fichero de texto con quienes intervienen en el pleno, una "
+                             "persona por línea: 'Nombre completo = cómo la llaman'. Ayuda "
+                             "al transcriptor y al redactor a reconocer nombres y apodos")
     args = parser.parse_args()
+    intervinientes = leer_intervinientes(args.intervinientes)
 
     if args.rehacer_acta:
         return _rehacer_acta(args.rehacer_acta)
 
     if args.rehacer_informe:
-        return 0 if _rehacer_informe(args.rehacer_informe, args.convocatoria) else 1
+        return 0 if _rehacer_informe(args.rehacer_informe, args.convocatoria, intervinientes) else 1
 
     if args.url:
         video_id = extraer_video_id(args.url)
@@ -819,7 +717,8 @@ def main() -> int:
             return 1
         procesar_pleno(None, video_id, titulo, fecha,
                        f"https://www.youtube.com/watch?v={video_id}",
-                       convocatoria=leer_convocatoria(args.convocatoria))
+                       convocatoria=leer_convocatoria(args.convocatoria),
+                       intervinientes=intervinientes)
         return 0
 
     if args.audio:
@@ -827,7 +726,8 @@ def main() -> int:
             print("--audio requiere --fecha YYYY-MM-DD y --titulo")
             return 1
         procesar_pleno(args.audio, None, args.titulo, args.fecha, None,
-                       convocatoria=leer_convocatoria(args.convocatoria))
+                       convocatoria=leer_convocatoria(args.convocatoria),
+                       intervinientes=intervinientes)
         return 0
 
     parser.print_help()

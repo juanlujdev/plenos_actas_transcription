@@ -79,7 +79,16 @@ El programa te irá preguntando, paso a paso:
      Si no lo tienes a mano, simplemente pulsa Enter sin
      escribir ni arrastrar nada, y el programa seguirá sin él.
 
-  d) Por último te preguntará si quieres empezar. Escribe "s"
+  d) Quién interviene en el pleno (opcional). El programa te pedirá,
+     una a una, las personas que hablan: escribe el nombre completo
+     y pulsa Enter; después te preguntará cómo la llaman en el
+     pleno (por ejemplo "Chari" o "Nando"; si la llaman por su
+     nombre, pulsa Enter sin escribir nada). Cuando hayas
+     terminado, pulsa Enter sin escribir nada. Ayuda a escribir bien
+     los nombres y a saber a quién se refieren; en el acta saldrá
+     siempre el nombre oficial. Si no quieres, pulsa Enter.
+
+  e) Por último te preguntará si quieres empezar. Escribe "s"
      y pulsa Enter.
 
 

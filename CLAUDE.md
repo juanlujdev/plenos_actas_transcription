@@ -51,7 +51,9 @@ python procesar_pleno.py --rehacer-acta 2026-07-07
 Requiere `ASSEMBLYAI_API_KEY` y `OPENROUTER_API_KEY` en el entorno. `GROQ_API_KEY` y
 `ffmpeg` solo hacen falta para el respaldo (y para procesar plenos sin clave de
 AssemblyAI). El modelo (`google/gemini-2.5-pro`) está fijo en `plenos_informe.MODELO`: es
-de pago y se eligió a propósito, no es un valor que se cambie por entorno.
+de pago y se eligió a propósito, no es un valor que se cambie por entorno. La excepción
+es el **auditor** (y su pasada de atribuciones), que usa `plenos_informe.MODELO_AUDITOR`
+(`anthropic/claude-opus-5.5` vía OpenRouter): ver el gotcha «El auditor es otro modelo».
 
 Dependencias: `pip install -r requirements.txt` (`pydantic`, `python-docx`, `requests`,
 `yt-dlp`).
@@ -78,6 +80,7 @@ desarrollador no cambia. Detalle de cada decisión en
 procesar_pleno.py     ← orquestación y CLI: --url | --audio | --rehacer-informe | --rehacer-acta
 plenos_informe.py     ← esquemas pydantic + los 3 prompts + bucle LLM
 plenos_acta.py        ← InformePleno → .docx sobre la plantilla oficial (sin LLM)
+quejas_pleno.py       ← casos de queja de plenos pasados contra su informe.json (local)
 plenos_guia.py        ← InformePleno + transcripción → guía de verificación .html
 asistente_plenos.py   ← menú guiado para la funcionaria
 construir_exe.ps1     ← empaquetado PyInstaller del asistente
@@ -135,6 +138,86 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   encabezado "ORDEN DEL DÍA". `render_acta` reaprovecha la banda de A) como ese
   encabezado y elimina las otras cuatro tablas. `parte` sigue existiendo, pero solo para
   saber si el punto termina en acuerdo o en "La Corporación se da por informada".
+- **Los intervinientes son una ayuda, no una prueba.** El asistente (y `--intervinientes
+  fichero.txt`, una persona por línea: `Nombre completo = cómo la llaman`) recoge quién
+  interviene y los apodos de ESE pleno (`Chari`, `Nando`). Van a `entrada.json`, a los
+  keyterms de AssemblyAI (`keyterms_del_pleno`) y al mensaje de generador, auditor y
+  corrector (`bloque_intervinientes`; reglas en `INTERVINIENTES_SESION`). Se contrastan con
+  `CORPORACION`, que sigue mandando en cargos y tratamientos; NO prueban asistencia ni
+  rellenan el mapa de voces (la etiqueta se identifica con cita literal), y un apodo de dos
+  personas no identifica a ninguna. Es el mismo razonamiento de
+  `wiki/concepts/speaker-identification-descartado.md`: una lista de nombres empuja a
+  rellenar, así que se presenta como pista y el *no identificado* sigue siendo legítimo.
+  `--rehacer-informe` reutiliza la lista guardada, o la que se pase.
+- **Reglas de redacción añadidas tras las quejas del 7-X sobre el acta del 3-IX.** 6 bis
+  (no reconstruir lo que el audio no dice claro: «torrejas… galletas» acabó como
+  «regulación de acceso a Las Chorreras», que nadie dijo), 14 bis (la respuesta a un ruego
+  va en su mismo elemento solo si es concluyente) y 16 quater (un insulto o acusación
+  personal se atribuye a quien lo dijo; ni «tenso enfrentamiento» ni «mutuas» salvo que cada
+  parte lo dirija a la otra). El auditor tiene los dos contrapesos correspondientes
+  (datos sin frase clara; reproches personales) y el corrector no las deshace. La 16 sigue
+  podando la crítica política: la 16 quater solo cubre lo personal.
+- **«Alcaldesa» no llega nunca al acta, ni por el modelo ni por una vecina.** Además de los
+  prompts, `plenos_acta.normalizar_cargos` sustituye «la (Sra.) alcaldesa (en funciones…)»
+  por `PRESIDENCIA["tratamiento"]` fuera de comillas, como `comillas()` garantiza la
+  tipografía. Dentro de comillas se respeta: es una cita (la Teniente de Alcalde lamenta el
+  uso de «alcaldesa accidental»). Lo pidió Fernando Pons: una sola forma para Lorena.
+- **Lo que una regla de código puede comprobar no se le confía al auditor.**
+  `plenos_informe.incoherencias` se suma a las objeciones del auditor en cada vuelta: un
+  acuerdo que contradice su votación, un resultado contrario a un recuento completo y las
+  calificaciones que veta la 16 quater («tenso enfrentamiento», «acusaciones mutuas»…).
+  Nació de la segunda acta del 3-IX: el auditor tenía esas reglas en su prompt y aun así
+  dejó pasar «rechazar» el acta del 7 de julio con un 3-2-2. Y `Votacion` deduce el
+  resultado de un recuento completo sin empate cuando queda en «no consta» (mayoría
+  simple: aritmética sobre lo oído), porque la vía de escape del bucle lo dejaba en blanco
+  aunque los números se oyeran.
+- **El auditor es otro modelo que el redactor.** `MODELO_AUDITOR` = Opus 5.5 (OpenRouter
+  `anthropic/claude-opus-5.5`); generador y corrector siguen en Gemini. Motivo: un modelo
+  revisándose a sí mismo comparte sus puntos ciegos, y en el acta del 3-IX el auditor Gemini
+  dejó pasar justo lo que otro modelo vio al leer el mismo informe. Se comparó Sonnet 5.5 con
+  Opus 5.5 sobre ese acta: ven lo mismo, pero Sonnet pidió anular un recuento válido (3-4)
+  porque lo decía una etiqueta «mezclada» y el corrector lo borró; Opus no (una sola muestra:
+  si en otro pleno Opus también falla así, la defensa es `restaurar_recuentos`, no otro
+  modelo). `_llamar_llm(..., modelo)` NO envía `temperature` (da 400 en ambos) y envía
+  `reasoning: {"enabled": true}`; streaming y esquema estricto funcionan igual. Coste medido:
+  ~0,65 $ por llamada (~115 k tokens de entrada, 6-10 k de salida, ~110 s); un pleno son
+  1 de atribuciones + 1 por vuelta de auditor, ~3 $ de auditoría, ~4,5-5 $ con Gemini y
+  AssemblyAI. Cambiar de auditor es tocar una constante, pero no sin repetir
+  `python quejas_pleno.py 2026-09-03`.
+- **Un recuento que se oye no se anula porque lo diga una etiqueta «mezclada».** Qué voz habla
+  y cuántos votos se dijeron son cosas distintas. Lo dicen los prompts del auditor y del de
+  atribuciones, y lo garantiza el código: `restaurar_recuentos` compara el informe antes y
+  después del corrector y devuelve los recuentos completos (a favor y en contra) que haya
+  borrado, con un aviso entre los pendientes («recuento restaurado») para que una persona lo
+  confirme contra la grabación. No se le pide al corrector que no lo haga: el 3-IX obedeció
+  a un auditor y el punto 3 perdió su 3-4.
+- **Atribuciones: una pasada extra del auditor, siempre.** `auditar_atribuciones` hace una
+  sola pregunta («¿lo dijo quien el informe dice?», `PROMPT_ATRIBUCIONES`) una vez, sobre
+  lo que redacta el generador. Se ejecuta siempre y no solo cuando el mapa marca una
+  etiqueta como mezclada: en el 3-IX la etiqueta del concejal que cargó con la pregunta de
+  un vecino NO estaba marcada, y ese disparador no la habría visto. Sus objeciones se suman
+  a las del auditor general y de `incoherencias`. Con fakes inyectados en `bucle_informe` no
+  se llama (kwarg `atribuciones`).
+- **Dos comprobaciones más en código, ambas en `incoherencias`.** `citas_no_halladas`: lo
+  que va entre comillas tiene que estar, en pares de palabras consecutivas (≥70 %), en la
+  transcripción; se saltan las citas de menos de 5 palabras y los puntos suspensivos parten
+  la cita. `toponimos_parecidos`: una palabra casi igual (≥0,8) a un topónimo de `TOPONIMOS`
+  sin serlo se marca; un lugar que no esté en la lista no se detecta (se añade a la lista
+  cuando alguien se queja). `Enguídanos` se excluye: «enguidano» es un gentilicio. Los
+  nombres de personas no se comparan.
+- **Las quejas de cada pleno se convierten en casos.** `quejas_pleno.py` (local, no es parte
+  de la suite: lee datos reales no versionados) comprueba el `informe.json` de un pleno
+  contra las quejas justificadas que se hicieron del acta, más las comprobaciones de
+  `incoherencias`. Tras tocar prompts/código: `--rehacer-informe <fecha>` y
+  `python quejas_pleno.py <fecha>`. Cada queja justificada nueva es una entrada en `CASOS`
+  (id, queja, función); las comprobaciones salen de hechos verificados con la transcripción.
+- **La fecha del pleno la fija quien lo procesa, no el modelo.** `procesar_pleno.fijar_fecha`
+  pisa siempre `fecha_pleno` con la de la pregunta del asistente / `--fecha` / el título
+  (también en `--rehacer-acta`). La Presidencia abrió el 3-IX diciendo «Pleno Ordinario del
+  30 de septiembre» y el acta salió fechada el 30.
+- **Los topónimos viven en `plenos_informe.TOPONIMOS`** (Las Chorreras, Pesquera, Playeta,
+  Keltiber, PR-53, GR-64, GR-66…): una lista para la regla 20, el corrector y los keyterms
+  de AssemblyAI. Añadir un lugar nuevo es tocar solo esa lista.
 - **El auditor se contradice, y el bucle lo detecta.** Pidió `rechazado` en la primera
   auditoría y `aprobado` en la cuarta sobre la misma votación; el corrector obedeció a
   las dos y el acta acabó afirmando un resultado que la grabación no declara.

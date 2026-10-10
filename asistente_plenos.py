@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
-"""
-asistente_plenos.py - Asistente guiado para generar el acta de un pleno.
+"""Asistente guiado: pregunta y llama al pipeline de procesar_pleno.py sin terminal ni jerga.
 
-Es el punto de entrada del ejecutable que usa la funcionaria del Ayuntamiento:
-pregunta, valida y llama al pipeline de procesar_pleno.py. No duplica nada de la
-lógica del pipeline; solo la expone sin terminal y sin jerga.
-
-Se ejecuta de dos formas:
-  · empaquetado con PyInstaller — lo normal en el PC del Ayuntamiento
-  · python scripts/asistente_plenos.py — para desarrollar y probar
+Se ejecuta empaquetado con PyInstaller (PC del Ayuntamiento) o con python (desarrollo).
 """
 
 import json
@@ -23,9 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
 
-# Windows abre la consola con su codepage regional (cp1252 en España) y ahí los acentos
-# de nuestros mensajes salen como "todavÃ­a". Reconfigurar sys.stdout a UTF-8 no basta:
-# hay que decírselo también a la consola. Sin esto, la funcionaria ve rota cada frase.
+# La consola de Windows usa cp1252: reconfigurar sys.stdout no basta, hay que fijar
+# también su codepage a UTF-8 o los acentos salen rotos.
 if sys.platform == "win32":
     try:
         import ctypes
@@ -34,7 +26,6 @@ if sys.platform == "win32":
     except Exception:
         pass  # sin consola propia (salida redirigida a fichero): nada que ajustar
 
-# UTF-8 en Windows: sin esto, un acento en un mensaje aborta la ejecución.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -45,9 +36,8 @@ from procesar_pleno import (ErrorDeDescarga, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
                             _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
 from plenos_informe import normalizar_fecha
-# El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py, no aquí: depende
-# del mismo formato de objeción que objecion_legible, y procesar_pleno lo escribe
-# también en --rehacer-acta, sin pasar por este asistente.
+# El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py porque
+# procesar_pleno también lo escribe en --rehacer-acta, sin pasar por aquí.
 from plenos_guia import (_avisos_legibles, _lineas_aviso, escribir_comprobaciones,
                          texto_comprobaciones)
 
@@ -66,9 +56,8 @@ class Instalacion(NamedTuple):
 
 
 def carpeta_base() -> Path:
-    """La carpeta de la instalación: la del .exe si está empaquetado, la raíz del
-    repo si no. Dentro del .exe no vale __file__: apunta a una carpeta temporal
-    que Windows borra al salir, así que nada de lo que se guarde ahí sobrevive."""
+    """Carpeta de la instalación: la del .exe si está empaquetado, la raíz del repo si no.
+    En el .exe __file__ apunta a una carpeta temporal que se borra al salir."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
@@ -76,26 +65,17 @@ def carpeta_base() -> Path:
 
 def cargar_configuracion(config: Path) -> list[str]:
     """Lee configuracion.env y devuelve las claves de API que falten.
-
-    Las claves viven en un fichero de texto y no en variables de entorno del
-    sistema porque el día que se pasen a las cuentas del Ayuntamiento hay que
-    poder cambiarlas con el Bloc de notas, sin reconstruir el ejecutable."""
+    Van en un fichero editable con el Bloc de notas, sin reconstruir el ejecutable."""
     ruta = config / "configuracion.env"
     if ruta.exists():
         from dotenv import load_dotenv
-        # El Bloc de notas de Windows guarda con BOM, y así es como se va a editar
-        # este fichero en el Ayuntamiento cuando lleguen las claves. Sin
-        # utf-8-sig, el BOM se pega a la primera clave del fichero
-        # ("﻿ASSEMBLYAI_API_KEY" en vez de "ASSEMBLYAI_API_KEY") y esa clave se
-        # pierde en silencio: el programa diría "todavía no está configurado"
-        # aunque la clave estuviera bien escrita.
+        # utf-8-sig: el Bloc de notas guarda con BOM, que se pegaría a la primera clave.
         load_dotenv(ruta, override=True, encoding="utf-8-sig")
     return [c for c in CLAVES_NECESARIAS if not os.environ.get(c)]
 
 
 def preparar_instalacion() -> Instalacion:
-    """Resuelve las carpetas, crea las que falten y deja el entorno listo para
-    que el pipeline escriba donde toca."""
+    """Resuelve y crea las carpetas y deja el entorno listo para el pipeline."""
     base = carpeta_base()
     config = base / DIR_CONFIG
     config.mkdir(parents=True, exist_ok=True)
@@ -106,7 +86,6 @@ def preparar_instalacion() -> Instalacion:
     elif getattr(sys, "frozen", False):
         actas = base / DIR_ACTAS
     else:
-        # Desde el repo se respeta la carpeta de siempre del desarrollador.
         actas = base / "uploads" / "actas"
     actas.mkdir(parents=True, exist_ok=True)
     os.environ["ACTAS_DIR"] = str(actas)  # lo lee procesar_pleno.dir_borrador
@@ -114,8 +93,7 @@ def preparar_instalacion() -> Instalacion:
     registros = config / "registros"
     registros.mkdir(parents=True, exist_ok=True)
 
-    # El yt-dlp.exe incluido solo existe en la instalación empaquetada; desde el
-    # repo se usa el de pip, que es el que el desarrollador ya mantiene.
+    # El yt-dlp.exe solo existe empaquetado; desde el repo se usa el de pip.
     descargador = config / "yt-dlp.exe"
     if descargador.exists():
         os.environ["YT_DLP_EXE"] = str(descargador)
@@ -124,26 +102,21 @@ def preparar_instalacion() -> Instalacion:
 
 
 def nuevo_log(registros: Path, etiqueta: str = "") -> Path:
-    """Un fichero de registro por ejecución. Es lo que la funcionaria envía
-    cuando algo falla, así que el nombre tiene que decir de qué pleno es."""
+    """Un fichero de registro por ejecución; el nombre indica de qué pleno es."""
     sello = datetime.now().strftime("%Y-%m-%d_%H%M")
     sufijo = f"_pleno-{etiqueta}" if etiqueta else ""
     return registros / f"{sello}{sufijo}.log"
 
 
 # ── la consola: el registro se lo queda todo, la pantalla solo lo legible ──────
-# El pipeline imprime cientos de líneas pensadas para el desarrollador. Enseñárselas
-# a la funcionaria sería ruido; ocultarlas sin guardarlas dejaría sin diagnóstico el
-# día que algo falle. Así que van enteras al registro y traducidas a la pantalla.
+# Todo el pipeline va al registro; a la pantalla solo llegan las líneas traducidas.
 
 _TRADUCCIONES = [
     (re.compile(r"^descargando audio"), "Paso 1 de 3 · Descargando la grabación del pleno."),
     (re.compile(r"^transcribiendo con AssemblyAI"),
      "Paso 2 de 3 · Transcribiendo la grabación. Es la parte más larga."),
     (re.compile(r"^\s*subiendo el audio"), "   Enviando la grabación al servicio de transcripción."),
-    # El envío de un pleno entero (100-200 MB) puede cortarse a mitad; _subir_audio
-    # ya lo reintenta solo. Tiene que ir ANTES de la entrada genérica de "va lento"
-    # porque ambas podrían casar con líneas parecidas de reintento.
+    # Debe ir ANTES de la entrada genérica de "va lento": ambas podrían casar.
     (re.compile(r"^\s*se cortó la subida"),
      "   El envío se ha interrumpido. Se reintenta solo: NO cierres esta ventana."),
     (re.compile(r"^\s*transcribiendo \(id "), "   Transcribiendo. Esto tarda varios minutos."),
@@ -155,8 +128,6 @@ _TRADUCCIONES = [
     (re.compile(r"→ AUDITOR"), "   Revisando lo redactado contra la grabación."),
     (re.compile(r"→ CORRECTOR"), "   Corrigiendo lo que la revisión ha marcado."),
     (re.compile(r"visto bueno, sin objeciones"), "   La revisión no ha encontrado problemas."),
-    # El 504 "Upstream idle timeout" ya lo reintenta solo _peticion: lo único que
-    # falta es que ella no lo lea como un error suyo ni cierre la ventana.
     (re.compile(r"devolvió (429|5\d\d)|el proveedor cortó la respuesta"),
      "   El servicio va lento ahora mismo. Se reintenta solo: NO cierres esta ventana."),
 ]
@@ -164,10 +135,7 @@ _TRADUCCIONES = [
 
 def traducir(linea: str, numerar: bool = True) -> str | None:
     """Línea del pipeline → frase para la funcionaria, o None si no debe verla.
-    Lo que no se traduce no se pierde: va entero al registro.
-
-    numerar=False al rehacer el documento: ahí no hay descarga ni transcripción, y
-    un "paso 3 de 3" como paso único sería desconcertante."""
+    numerar=False quita el "Paso N de 3" (al rehacer el documento no hay 3 pasos)."""
     for patron, amable in _TRADUCCIONES:
         if patron.search(linea):
             return amable if numerar else re.sub(r"^Paso \d de 3 · ", "", amable)
@@ -175,10 +143,8 @@ def traducir(linea: str, numerar: bool = True) -> str | None:
 
 
 class Consola:
-    """Sustituye a sys.stdout mientras corre el pipeline. El pipeline es código
-    ajeno que puede tocar cualquier miembro del contrato habitual de un fichero de
-    texto (isatty, encoding, writelines...), no solo write/flush: el fallo de
-    isatty no fue mala suerte, fue que esta clase no lo cumplía del todo."""
+    """Sustituye a sys.stdout mientras corre el pipeline: registro completo y pantalla
+    traducida. Debe cumplir el contrato de un fichero de texto (isatty, encoding...)."""
 
     encoding = "utf-8"
 
@@ -191,8 +157,7 @@ class Consola:
         self._candado = threading.Lock()
 
     def write(self, texto: str) -> int:
-        # El pipeline escribe por trozos, no por líneas: hay que reensamblarlas o
-        # el traductor no reconocería ningún patrón.
+        # El pipeline escribe por trozos: se reensamblan líneas para poder traducirlas.
         self._resto += texto
         while "\n" in self._resto:
             linea, self._resto = self._resto.split("\n", 1)
@@ -230,11 +195,7 @@ class Consola:
         pass
 
     def isatty(self) -> bool:
-        """El pipeline pregunta esto para decidir si pinta colores ANSI. Aquí la
-        respuesta es no: lo que sale por pantalla ya viene filtrado y traducido, y
-        en el registro los códigos de color solo ensuciarían el fichero que la
-        funcionaria nos acaba enviando. Sin este método, `_hay_color()` revienta al
-        final de cada ejecución, con el acta ya escrita."""
+        """El pipeline lo consulta para pintar colores ANSI; aquí no, ensuciarían el registro."""
         return False
 
     def cerrar(self) -> None:
@@ -245,9 +206,7 @@ class Consola:
 
 
 class Latido:
-    """Da señales de vida mientras el pipeline trabaja. Veinte minutos de consola
-    muda parecen un programa colgado, y lo que hace alguien ante un programa
-    colgado es cerrarlo."""
+    """Imprime señales de vida: una consola muda parece colgada y se cierra."""
 
     def __init__(self, consola: Consola, cada: int = 60):
         self.consola, self.cada = consola, cada
@@ -269,9 +228,7 @@ class Latido:
 
 
 def ejecutar_pipeline(consola: Consola, tarea):
-    """Ejecuta la tarea con la salida del pipeline redirigida a la consola amable.
-    El sys.stdout original se restaura pase lo que pase: sin eso, un fallo dejaría
-    a las preguntas siguientes escribiendo en el registro en vez de en pantalla."""
+    """Ejecuta la tarea con stdout redirigido a la consola, restaurándolo siempre."""
     anterior = sys.stdout
     sys.stdout = consola
     try:
@@ -288,15 +245,12 @@ _MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
 
 
 def limpiar_ruta(texto: str) -> str:
-    """Arrastrar un fichero a la consola pega su ruta, y Windows la envuelve entre
-    comillas. Es la forma menos técnica de pedir un archivo a alguien que no
-    sabría escribir una ruta a mano."""
+    """Quita las comillas que Windows añade al arrastrar un fichero a la consola."""
     return texto.strip().strip('"').strip("'").strip()
 
 
 def fecha_en_palabras(iso: str) -> str:
-    """'2026-09-02' → '2 de septiembre de 2026'. A mano y no con locale: en Windows
-    el locale español no está garantizado y el mes saldría en inglés."""
+    """'2026-09-02' → '2 de septiembre de 2026'. Sin locale: en Windows no está garantizado."""
     anyo, mes, dia = (int(x) for x in iso.split("-"))
     return f"{dia} de {_MESES[mes - 1]} de {anyo}"
 
@@ -313,9 +267,7 @@ def preguntar_url(consola: Consola) -> str:
 
 
 def preguntar_fecha(consola: Consola, sugerida: str | None) -> str:
-    """La escribe ella. Deducirla del título del vídeo es lo frágil del proceso, y
-    un error de un dedo acabaría en el nombre de la carpeta y en el encabezado de
-    un documento que se sella."""
+    """Pide la fecha a la funcionaria; la del título del vídeo es solo una sugerencia."""
     while True:
         consola.decir("\n   ¿Qué día se celebró este pleno?")
         consola.decir("   Escríbelo así:  02/09/2026   (día / mes / año)")
@@ -332,8 +284,7 @@ def preguntar_fecha(consola: Consola, sugerida: str | None) -> str:
 
 
 def preguntar_convocatoria(consola: Consola) -> str | None:
-    """El orden del día. Manda en la forma —títulos, numeración, expedientes y tipo
-    de sesión— mientras la grabación manda en el fondo."""
+    """Pide el PDF o JPEG del orden del día (opcional)."""
     while True:
         consola.decir("\n   ¿Tienes el PDF o la foto de la convocatoria (el orden del día)?")
         consola.decir("")
@@ -348,7 +299,7 @@ def preguntar_convocatoria(consola: Consola) -> str | None:
         if not ruta:
             return None
         try:
-            leer_convocatoria(ruta)  # valida que existe y que es un PDF o una imagen JPEG
+            leer_convocatoria(ruta)  # valida que existe y es PDF o JPEG
             return ruta
         except (FileNotFoundError, ValueError) as e:
             consola.anotar(f"convocatoria rechazada: {e}")
@@ -356,9 +307,31 @@ def preguntar_convocatoria(consola: Consola) -> str | None:
             consola.decir("   JPEG guardada en este ordenador.")
 
 
+def preguntar_intervinientes(consola: Consola) -> list[dict] | None:
+    """Pregunta quién interviene y cómo lo llaman en la sala (opcional: Enter la salta)."""
+    consola.decir("\n   ¿Quieres decirme quién interviene en este pleno?")
+    consola.decir("")
+    consola.decir("   Me ayuda a escribir bien los nombres y a saber a quién se refieren")
+    consola.decir("   cuando dicen, por ejemplo, «Chari». En el acta se seguirá usando el")
+    consola.decir("   nombre oficial completo.")
+    consola.decir("")
+    consola.decir("   Escribe el nombre completo de una persona y pulsa Enter. Te")
+    consola.decir("   preguntaré cómo la llaman en el pleno. Cuando hayas terminado, pulsa")
+    consola.decir("   Enter sin escribir nada. Si no quieres hacerlo, pulsa Enter ahora.")
+    personas: list[dict] = []
+    while True:
+        nombre = input("\n   Nombre completo:  ").strip()
+        if not nombre:
+            break
+        apodos = input(f"   ¿Cómo llaman a {nombre} en el pleno? (Enter si por su nombre):  ").strip()
+        personas.append({"nombre": nombre,
+                         "apodos": [a.strip() for a in apodos.split(",") if a.strip()]})
+        consola.anotar(f"interviniente: {nombre} · apodos={apodos or '—'}")
+    return personas or None
+
+
 def preguntar_grabacion_local(consola: Consola) -> str | None:
-    """Salida cuando YouTube no deja descargar el vídeo. AssemblyAI acepta vídeo
-    además de audio, así que sirve el fichero tal cual, sin convertir nada."""
+    """Alternativa cuando YouTube bloquea la descarga; AssemblyAI acepta vídeo tal cual."""
     consola.decir("\n   Si tienes la grabación guardada en este ordenador, arrástrala")
     consola.decir("   hasta esta ventana y pulsa Enter, y sigo con ella.")
     consola.decir("   Si no la tienes, pulsa Enter sin escribir nada.")
@@ -384,9 +357,6 @@ def preguntar_opcion(consola: Consola, opciones: list[str]) -> int:
 
 
 # ── el final: ¿puedo sellar esto o no? ────────────────────────────────────────
-# texto_comprobaciones, escribir_comprobaciones y sus dos ayudantes (_avisos_legibles,
-# _lineas_aviso) viven en plenos_guia.py (importados arriba): ver el comentario junto
-# a ese import.
 
 def abrir_carpeta(consola: Consola, carpeta: Path) -> None:
     """Le abre la carpeta del pleno para que no tenga que ir a buscarla."""
@@ -397,9 +367,7 @@ def abrir_carpeta(consola: Consola, carpeta: Path) -> None:
 
 
 def _anunciar_guia(consola: Consola, resultado) -> None:
-    """La guía de verificación HTML, si se pudo componer. Explica para qué sirve,
-    no solo que existe: sin eso, "hay un archivo más" no le dice a la funcionaria
-    por qué merece abrirlo antes de escuchar tres horas de grabación a ciegas."""
+    """Anuncia la guía HTML de verificación, si se compuso, y para qué sirve."""
     if resultado.ruta_guia is None:
         return
     consola.decir("\n    También se ha creado una guía de verificación, en un")
@@ -412,12 +380,8 @@ def _anunciar_guia(consola: Consola, resultado) -> None:
 
 
 def reintentar_acta(consola: Consola, resultado, fecha: str):
-    """El acta está redactada pero el .docx no se pudo escribir. La causa casi siempre
-    es tenerlo abierto en Word, y recomponerlo desde el informe ya guardado es
-    instantáneo y no cuesta nada, así que se ofrece aquí mismo: mandarla a la opción 2
-    del menú volvería a pasar por el modelo y a cobrar por arreglar algo que se arregla
-    cerrando un programa. Devuelve el resultado con el acta ya escrita, o el mismo que
-    recibió si no se ha podido."""
+    """El .docx no se pudo escribir (casi siempre abierto en Word): lo recompone desde
+    el informe guardado, sin LLM ni coste. Devuelve el resultado actualizado o el mismo."""
     consola.decir("\n    El acta está redactada, pero el archivo de Word no se ha podido")
     consola.decir("    guardar. Casi siempre es porque el documento de este pleno está")
     consola.decir("    abierto en Word.")
@@ -438,9 +402,7 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
     """Lo último que queda en pantalla: si esto se puede sellar o no."""
     raya = "  " + "═" * 56
 
-    # Antes de dar nada por perdido: si lo único que falló fue escribir el .docx, se
-    # reintenta gratis. Va aquí y no en el flujo para que valga igual al crear un pleno
-    # nuevo y al rehacerlo, que son los dos sitios que llaman a esta pantalla.
+    # Aquí y no en los flujos, para que valga al crear y al rehacer.
     if resultado.ruta_acta is None and resultado.fallo_acta:
         resultado = reintentar_acta(consola, resultado, fecha)
 
@@ -452,9 +414,7 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
         consola.decir("\n    La transcripción sí se ha guardado: no se ha perdido nada")
         consola.decir("    ni hay que empezar de cero.")
         if resultado.fallo_acta:
-            # El informe está bien; lo que falla es escribir el fichero. La opción 2 NO
-            # es la salida aquí —volvería a pasar por el modelo y a cobrar—, así que se
-            # deriva al responsable, que lo recompone con --rehacer-acta sin coste.
+            # La opción 2 NO sirve aquí (repetiría el modelo y cobraría): se deriva al responsable.
             consola.decir("\n    Motivo: el archivo de Word no se ha podido guardar, aunque")
             consola.decir("    el acta sí está redactada y guardada por dentro.")
             consola.decir(f"\n    Detalle técnico: {resultado.fallo_acta}")
@@ -464,8 +424,6 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
             consola.decir(f"      · Avisa a {RESPONSABLE} y envíale este")
             consola.decir(f"        archivo:\n        {ruta_log}")
         else:
-            # Sin tipo de sesión no hay plantilla que elegir, y elegirla a ciegas daría
-            # un encabezado equivocado en un documento que se sella.
             consola.decir("\n    Motivo: en la grabación no se dice si el pleno era ordinario")
             consola.decir("    o extraordinario, y de eso depende el modelo de acta.")
             consola.decir("\n    Qué puedes hacer:")
@@ -501,8 +459,6 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
 
     _anunciar_guia(consola, resultado)
 
-    # Hasta en el mejor caso: lo que se genera es un borrador, nunca el documento
-    # oficial. Lo oficial es lo que ella revisa, completa y sella.
     consola.decir("\n    RECUERDA: esto es un BORRADOR. Revísalo y complétalo")
     consola.decir("    como haces siempre antes de sellarlo.")
     consola.decir(f"\n    Está aquí:  {resultado.carpeta}")
@@ -524,10 +480,7 @@ AVISO_DURACION = """
 
 
 def actualizar_descargador(consola: Consola) -> None:
-    """yt-dlp deja de funcionar cada pocos meses, cuando YouTube cambia algo. El
-    binario oficial sabe actualizarse solo, así que se le pide antes de cada
-    descarga: unos segundos una vez al mes, y nadie se queda tirado esperando a
-    que le manden un ejecutable nuevo. Si falla, seguimos con lo que haya."""
+    """Actualiza yt-dlp antes de descargar (YouTube lo rompe cada pocos meses). Si falla, sigue."""
     exe = os.environ.get("YT_DLP_EXE")
     if not exe:
         return
@@ -553,8 +506,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         titulo = f"Pleno del {fecha_en_palabras(fecha)}"
     consola_previa.cerrar()
 
-    # El registro se renombra por pleno una vez que sabemos la fecha: es lo que
-    # ella envía si algo falla, y tiene que decir de qué pleno es.
+    # Nuevo registro con la fecha ya conocida.
     consola = Consola(nuevo_log(inst.registros, fecha), pantalla)
     consola.anotar(f"pleno nuevo · url={url} · título={titulo} · fecha={fecha}")
 
@@ -576,6 +528,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
             return
 
     pdf = preguntar_convocatoria(consola)
+    intervinientes = preguntar_intervinientes(consola)
     consola.decir(AVISO_DURACION)
     if not input("   ¿Empezamos?  (s/n)  ").strip().lower().startswith("s"):
         consola.decir("\n   No se ha hecho nada.")
@@ -589,7 +542,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 
     def tarea(fuente=None):
         return procesar_pleno(fuente, video_id, titulo, fecha, url,
-                              convocatoria=convocatoria)
+                              convocatoria=convocatoria, intervinientes=intervinientes)
 
     try:
         try:
@@ -605,9 +558,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
             resultado = ejecutar_pipeline(consola, lambda: tarea(grabacion))
         pantalla_final(consola, resultado, fecha, consola.ruta_log)
     except Exception:
-        # Ella no puede acabar viendo una traza de Python: el detalle entero va al
-        # registro, que es lo que nos enviará, y en pantalla queda una frase y a
-        # quién avisar.
+        # La traza va al registro; en pantalla solo una frase.
         consola.anotar(traceback.format_exc())
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el acta.")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
@@ -621,8 +572,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 # ── flujo 2: volver a generar el documento de un pleno ya hecho ───────────────
 
 def plenos_guardados(actas: Path) -> list[tuple[str, str]]:
-    """[(fecha, título)] de los plenos ya procesados, del más reciente al más
-    antiguo. Así elige por número y no tiene que teclear fechas."""
+    """[(fecha, título)] de los plenos ya procesados, del más reciente al más antiguo."""
     salida: list[tuple[str, str]] = []
     if not actas.exists():
         return salida
@@ -641,24 +591,30 @@ def plenos_guardados(actas: Path) -> list[tuple[str, str]]:
 
 
 def rehacer_pleno(inst: Instalacion, pantalla, fecha: str) -> None:
-    """Vuelve a redactar el documento desde la transcripción ya guardada. No
-    descarga ni transcribe otra vez: es la parte cara y ya está pagada."""
+    """Rehace el documento desde la transcripción guardada, sin descargar ni transcribir."""
     consola = Consola(nuevo_log(inst.registros, fecha), pantalla, numerar=False)
     consola.anotar(f"rehacer informe · fecha={fecha}")
 
-    # Si el modelo no pudo determinar el tipo de sesión, repetir sin más devuelve
-    # exactamente lo mismo (temperatura 0, misma transcripción). La convocatoria es
-    # lo único que aporta el dato que falta.
+    # Repetir sin convocatoria da lo mismo (temperatura 0) si faltaba el tipo de sesión.
     pdf = None
     if not (dir_borrador(fecha) / f"{fecha}-convocatoria.pdf").exists():
         pdf = preguntar_convocatoria(consola)
+
+    intervinientes = None
+    try:
+        guardados = json.loads((dir_borrador(fecha) / "entrada.json")
+                               .read_text(encoding="utf-8")).get("intervinientes")
+    except (OSError, json.JSONDecodeError):
+        guardados = None
+    if not guardados:
+        intervinientes = preguntar_intervinientes(consola)
 
     consola.decir("\n   Vuelvo a redactar el documento a partir de la transcripción")
     consola.decir("   que ya está guardada. No descargo el vídeo ni lo transcribo otra")
     consola.decir("   vez: son unos 5 minutos.\n")
 
     try:
-        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(fecha, pdf))
+        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(fecha, pdf, intervinientes))
         if resultado is None:
             consola.decir("\n   No he podido rehacer ese pleno: le falta la transcripción.")
             consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
@@ -666,9 +622,7 @@ def rehacer_pleno(inst: Instalacion, pantalla, fecha: str) -> None:
             return
         pantalla_final(consola, resultado, fecha, consola.ruta_log)
     except Exception:
-        # Mismo tratamiento que flujo_pleno_nuevo: sin esto, un fallo aquí (el mismo
-        # de isatty, un corte de red, una clave caducada) cerraría el programa entero
-        # delante de ella, sin mensaje y sin cerrar el registro.
+        # Igual que en flujo_pleno_nuevo: sin mensaje ni registro cerrado el programa moriría.
         consola.anotar(traceback.format_exc())
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el documento.")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
@@ -697,9 +651,8 @@ def flujo_rehacer(inst: Instalacion, pantalla) -> None:
 # ── menú ──────────────────────────────────────────────────────────────────────
 
 def mostrar_instrucciones(inst: Instalacion, consola: Consola) -> None:
-    """Quien no encuentra un archivo sí encuentra una opción en pantalla."""
-    # .upper() no basta: "É" en mayúsculas sigue siendo "É", así que
-    # "LÉEME - Cómo generar un acta.txt" nunca casaría con "EEME" sin normalizar la tilde.
+    """Muestra el LEEME en pantalla."""
+    # .upper() no quita la tilde de "LÉEME", de ahí el replace.
     ruta = next((p for p in inst.base.glob("*.txt")
                  if "EEME" in p.name.upper().replace("É", "E")), None)
     if ruta is None:
@@ -752,13 +705,8 @@ if __name__ == "__main__":
         print("\n\n   Cancelado.")
         _codigo = 1
     except Exception:
-        # La ventana se cierra al terminar: sin esto, el fallo desaparecería con ella.
-        # preparar_instalacion() se vuelve a llamar para localizar la carpeta de
-        # registros; si el fallo original fue precisamente ahí (p.ej. permisos al
-        # crear carpetas), esta segunda llamada fallaría también, y un manejador de
-        # errores que revienta es peor que no tener manejador. Por eso va envuelta:
-        # si no consigue ni eso, al menos deja la traza por pantalla como último
-        # recurso, en vez de morir con un error dentro del propio manejador.
+        # Si el fallo original fue en preparar_instalacion, esta llamada también puede
+        # fallar: último recurso, traza por pantalla.
         try:
             _inst = preparar_instalacion()
             _ruta = nuevo_log(_inst.registros, "error")

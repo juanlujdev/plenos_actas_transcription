@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
-"""
-plenos_guia.py - Guía de verificación en HTML: InformePleno + transcripción → .html.
-
-Resuelve un problema muy concreto: la funcionaria del Ayuntamiento tiene que contrastar
-el acta contra una grabación de tres horas y media antes de sellarla, y hoy no tiene
-forma de saber en qué minuto del vídeo está cada cosa. Verificar una frase dudosa
-significa rebuscar por horas — y lo que pasa en la práctica es que no se verifica.
-
-Los datos ya existen: la transcripción lleva marcas [HH:MM:SS], cada votación y cada
-punto del orden del día guardan su propio `timestamp`, y cada objeción del auditor trae
-una cita literal de la grabación (`Problema.evidencia`). Esta guía solo los compone en
-una página. Sin LLM, igual que plenos_acta.py: recibe un InformePleno ya generado y
-escribe un documento — coste cero.
-"""
+"""Guía HTML para verificar el acta contra la grabación: enlaza cada punto, votación y
+objeción del auditor con su minuto en el vídeo. Sin LLM."""
 
 import html
 import re
@@ -21,16 +9,9 @@ from pathlib import Path
 
 from plenos_acta import fecha_larga
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Tiempo y enlaces
-# ══════════════════════════════════════════════════════════════════════════════
 
 def segundos(hms: str) -> int:
-    """'01:12:04' -> 4324. Devuelve 0 si no parsea.
-
-    Quien llama a esto decide qué hacer con un 0 (normalmente, no generar enlace):
-    esta función nunca inventa un tiempo, que en un documento de verificación es peor
-    que no tener ninguno."""
+    """'01:12:04' -> 4324. Devuelve 0 si no parsea (nunca inventa un tiempo)."""
     m = re.fullmatch(r"(\d{1,2}):(\d{2}):(\d{2})", (hms or "").strip())
     if not m:
         return 0
@@ -39,8 +20,7 @@ def segundos(hms: str) -> int:
 
 
 def _hms_legible(hms: str) -> str:
-    """'01:12:04' -> '1:12:04': sin el cero de relleno de la hora, como se lee un
-    minuto de vídeo y no una hora de reloj."""
+    """'01:12:04' -> '1:12:04', sin el cero de relleno de la hora."""
     try:
         h, m, s = hms.split(":")
         return f"{int(h)}:{m}:{s}"
@@ -49,32 +29,21 @@ def _hms_legible(hms: str) -> str:
 
 
 def enlace_video(video_url: str | None, hms: str | None) -> str | None:
-    """URL de YouTube que salta a ese segundo, o None si falta alguno de los dos.
-
-    Sin vídeo (el pleno se procesó desde un audio local con --audio) no hay nada a lo
-    que enlazar, y sin tiempo tampoco: un enlace al minuto 0 sería peor que ninguno,
-    porque parece un dato y no lo es."""
+    """URL de YouTube que salta a ese segundo, o None si falta el vídeo o el tiempo."""
     if not video_url or not hms:
         return None
     separador = "&" if "?" in video_url else "?"
     return f"{video_url}{separador}t={segundos(hms)}s"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Localizar una cita en la transcripción
-# ══════════════════════════════════════════════════════════════════════════════
 
 _LINEA = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$")
-# El auditor a veces copia la cita con su propia marca de tiempo delante
-# ("[01:12:04] Pues bueno, votos a favor."): es ruido para la comparación, no parte
-# de lo dicho, así que se recorta antes de buscar.
+# El auditor a veces antepone a la cita su marca de tiempo; se recorta antes de buscar.
 _PREFIJO_CITA = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]\s*(?:Interviniente\s+\S+:\s*)?")
 
 
 def _normalizar(texto: str) -> str:
-    """Minúsculas, sin acentos, sin signos de puntuación, espacios colapsados. Para
-    casar una cita del auditor con la transcripción aunque cambien las comillas, las
-    tildes o la puntuación exacta entre una y otra."""
+    """Minúsculas, sin acentos ni puntuación, espacios colapsados (para casar citas)."""
     texto = unicodedata.normalize("NFKD", (texto or "").lower())
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = re.sub(r"[^\w\s]", " ", texto)
@@ -91,21 +60,13 @@ def _lineas(transcripcion: str) -> list[tuple[str, str]]:
     return salida
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Turnos alternos: el mismo chequeo que DIARIZACION le pide al modelo, hecho en
-# Python contra la transcripción entera. Es la misma red de seguridad que ya usan
-# localizar()/buscar_en_acta() para lo que dice el auditor: no confiar en que el LLM
-# aplicó bien su propia regla, comprobarlo contra la fuente.
-# ══════════════════════════════════════════════════════════════════════════════
+# Turnos alternos: comprobación en Python de la regla DIARIZACION, sin fiarse del LLM.
 
 _ETIQUETA_LOCUTOR = re.compile(r"Interviniente\s+(\S+?):")
 
 
 def _secuencia_etiquetas(transcripcion: str) -> list[str]:
-    """Las etiquetas de locutor en el orden en que hablan, colapsando las repeticiones
-    consecutivas (la misma etiqueta interviniendo varias veces seguidas cuenta como un
-    solo turno): lo que importa para detectar un intercambio es quién toma la palabra
-    después de quién, no cuántas líneas ocupa cada intervención."""
+    """Etiquetas de locutor en orden de intervención, colapsando repeticiones consecutivas."""
     secuencia = []
     for _, texto in _lineas(transcripcion):
         m = _ETIQUETA_LOCUTOR.match(texto.strip())
@@ -118,31 +79,18 @@ def _secuencia_etiquetas(transcripcion: str) -> list[str]:
 
 
 def _se_alternan(etiqueta_a: str, etiqueta_b: str, secuencia: list[str]) -> bool:
-    """True si `etiqueta_a` y `etiqueta_b` se responden DIRECTAMENTE en algún momento:
-    tres turnos seguidos de la forma A, B, A (o B, A, B), sin ningún otro locutor entre
-    medias. Se exige la adyacencia real en `secuencia` —no basta con que las dos
-    aparezcan en cualquier orden a lo largo de la sesión— para no confundir un
-    intercambio de verdad con dos etiquetas que sencillamente hablan cada una en su
-    momento, sin relación entre sí, con una tercera intercalada.
+    """True si las etiquetas se responden directamente (A, B, A o B, A, B) en `secuencia`.
 
-    Dos etiquetas que jamás vuelven la una sobre la otra así pueden ser la misma persona
-    partida en dos voces por el transcriptor; dos que se responden, no (ver REGLA DE
-    TURNOS ALTERNOS en plenos_informe.DIARIZACION — validado contra el pleno del
-    2026-09-03, donde las seis etiquetas de la sesión se alternaban entre sí, en tríos
-    como este, cientos de veces)."""
+    Dos etiquetas que nunca se alternan pueden ser una misma persona partida en dos voces;
+    dos que se responden, no (ver REGLA DE TURNOS ALTERNOS en plenos_informe.DIARIZACION)."""
     pares = ([etiqueta_a, etiqueta_b, etiqueta_a], [etiqueta_b, etiqueta_a, etiqueta_b])
     return any(secuencia[i:i + 3] in pares for i in range(len(secuencia) - 2))
 
 
 def conflictos_turnos_alternos(informe, transcripcion: str) -> set[str]:
-    """Las etiquetas de `identificacion_locutores` que el mapa identifica como la MISMA
-    persona pese a alternar turnos entre sí en la transcripción.
+    """Etiquetas que el mapa asigna a la MISMA persona pese a alternar turnos entre sí.
 
-    Se ignoran las que ya llevan uno de los dos valores de escape (`etiqueta con voces
-    mezcladas`, `no identificado en la grabación`): esas no afirman ser una persona
-    concreta, así que no hay conflicto de identidad que detectar en ellas. Devuelve el
-    conjunto de etiquetas implicadas, no pares, porque una misma etiqueta puede
-    alternar con más de una."""
+    Ignora las de escape (voces mezcladas / no identificado). Devuelve etiquetas, no pares."""
     voces = [v for v in informe.identificacion_locutores
              if v.persona not in (_VOZ_MEZCLADA, _VOZ_NO_IDENTIFICADA)]
     secuencia = _secuencia_etiquetas(transcripcion)
@@ -156,19 +104,10 @@ def conflictos_turnos_alternos(informe, transcripcion: str) -> set[str]:
 
 
 def localizar(cita: str, transcripcion: str) -> str | None:
-    """Busca `cita` en la transcripción y devuelve el 'HH:MM:SS' de la intervención
-    donde aparece, o None si no la encuentra. Nunca inventa un tiempo: en un
-    documento de verificación, un minuto equivocado es peor que ninguno.
+    """'HH:MM:SS' de la intervención que contiene `cita`, o None (nunca inventa un tiempo).
 
-    Cascada, de más a menos exigente:
-    1. la cita tal cual, como subcadena de la línea;
-    2. la cita normalizada (minúsculas, sin acentos, sin puntuación, espacios
-       colapsados), para sobrevivir a los cambios de forma que introducen el modelo
-       o la propia transcripción automática;
-    3. un fragmento de 6 a 8 palabras seguidas de la cita (probando primero el más
-       largo en caracteres, que es el que menos probablemente case por casualidad),
-       para cuando el modelo parafrasea ligeramente al citar.
-    """
+    Cascada: subcadena exacta; cita normalizada; ventanas de 6 a 8 palabras (las más largas
+    primero)."""
     cita = _PREFIJO_CITA.sub("", (cita or "").strip()).strip()
     if not cita or not transcripcion:
         return None
@@ -201,28 +140,18 @@ def localizar(cita: str, transcripcion: str) -> str | None:
     return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Objeciones del auditor, en términos que entienda la funcionaria
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _numero_citado(seccion: str) -> int | None:
-    """El número de punto que menciona `seccion` ('Punto 3', '3º'...), o None.
+    """Número de punto citado en `seccion` ('Punto 3', '3º'), o None.
 
-    Los números entre corchetes ('orden_del_dia[2]') se ignoran a propósito: son el
-    índice de la lista en el JSON, no el número del punto en el acta, y confundirlos
-    apuntaría al punto equivocado."""
+    Ignora '[2]': es el índice en el JSON, no el número del punto."""
     sin_indices = re.sub(r"\[\d+\]", "", seccion or "")
     m = re.search(r"\d+", sin_indices)
     return int(m.group()) if m else None
 
 
 def _punto_de(seccion: str, informe):
-    """El PuntoOrdenDia cuya sección casa con `seccion`, por número o por título; None
-    si no se puede identificar ninguno.
-
-    Es la vía de siempre, para cuando el auditor ya escribe la sección en prosa
-    ("Punto 3", un título literal). Las rutas internas del programa
-    ("orden_del_dia[2].texto") las traduce `_ruta_legible`, más abajo."""
+    """PuntoOrdenDia que casa con `seccion` (en prosa) por número o título; None si ninguno."""
     numero = _numero_citado(seccion)
     if numero is not None:
         for punto in informe.orden_del_dia:
@@ -238,35 +167,27 @@ def _punto_de(seccion: str, informe):
 
 
 def _titulo_punto(punto) -> str:
-    """'Punto 3º) TÍTULO', con el mismo formato que usa el documento
-    (`plenos_acta.render_acta` numera igual: '2º) TÍTULO.'). Sin número, un guion en su
-    lugar: no se inventa uno."""
+    """'Punto 3º) TÍTULO', como en el acta; sin número, un guion."""
     numero = f"{punto.numero}º" if punto.numero is not None else "—"
     return f"Punto {numero}) {punto.titulo}"
 
 
 def _punto_ruegos_y_preguntas(informe):
-    """El PuntoOrdenDia 'RUEGOS Y PREGUNTAS' si el orden del día lo trae numerado como
-    punto propio (lo habitual: suele ser el último); None si no aparece así, en cuyo
-    caso el turno de ruegos no tiene número de punto que anteponer."""
+    """El punto 'RUEGOS Y PREGUNTAS' si el orden del día lo trae numerado; None si no."""
     for punto in informe.orden_del_dia:
         if _normalizar(punto.titulo) == "ruegos y preguntas":
             return punto
     return None
 
 
-# Sufijo en cristiano según en qué parte del punto está la afirmación dudosa. Solo
-# cubre lo que puede señalar el auditor dentro de un PuntoOrdenDia: no hay sufijo para
-# 'numero' porque ya va dentro del propio "Punto Nº)".
+# Sufijo según la parte del punto señalada por el auditor ('numero' no: ya va en "Punto Nº)").
 _SUFIJOS_CAMPO = {
     "texto": "en el relato del debate",
     "acuerdo": "en el acuerdo",
     "titulo": "en el título",
 }
 
-# Campos de InformePleno que no son el orden del día ni los ruegos, traducidos a
-# lenguaje llano. Si el auditor señala uno de estos a secas (sin índice ni sufijo), esto
-# basta; si viene con algo más raro detrás, `_ruta_legible` prefiere no inventar.
+# Campos de InformePleno (salvo orden del día y ruegos) en lenguaje llano.
 _CAMPOS_INFORME = {
     "asistentes": "Lista de asistentes",
     "ausentes": "Lista de ausentes",
@@ -281,17 +202,13 @@ _CAMPOS_INFORME = {
     "resumen_corto": "Resumen para la web",
 }
 
-# Ruta interna tipo 'orden_del_dia[2].texto' o 'ruegos_y_preguntas[2]': raíz, índice
-# opcional entre corchetes, resto opcional tras un punto. Una sección que ya viene en
-# prosa ("Punto 3", un título) nunca casa entera con esto, así que sigue la vía antigua
-# de _punto_de sin que este patrón interfiera.
+# Ruta interna tipo 'orden_del_dia[2].texto': raíz, índice opcional, resto opcional.
+# Una sección en prosa no casa entera.
 _RUTA_CAMPO = re.compile(r"^(\w+)(?:\[(\d+)\])?(?:\.(.+))?$")
 
 
 def _sufijo_campo(resto: str | None) -> str | None:
-    """La parte del punto donde está la afirmación dudosa, en cristiano: '.texto' es el
-    relato del debate, '.votacion' o '.votacion.algo-mas' es la votación. None si el
-    resto no dice nada traducible (o no hay resto)."""
+    """Parte del punto donde está la duda ('.texto', '.votacion'...) en cristiano, o None."""
     if not resto:
         return None
     raiz = re.sub(r"\[\d+\]$", "", resto.split(".")[0])
@@ -301,17 +218,10 @@ def _sufijo_campo(resto: str | None) -> str | None:
 
 
 def _ruta_legible(seccion: str, informe) -> tuple[str | None, object | None]:
-    """Traduce una ruta interna del programa ('orden_del_dia[2].texto',
-    'ruegos_y_preguntas[2]', 'asistentes'...) al lenguaje del acta, para que la
-    funcionaria pueda buscarlo tal cual. Devuelve (texto, punto): `punto` es el
-    PuntoOrdenDia asociado si lo hay, para que la cascada de tiempos de
-    `objecion_legible` lo siga aprovechando.
+    """Traduce una ruta interna ('orden_del_dia[2].texto') al lenguaje del acta.
 
-    (None, None) si `seccion` no tiene forma de ruta (es prosa — la resuelve
-    `_punto_de`, no esta función) o si la traducción no es segura: un índice fuera de
-    rango (el modelo puede citar mal el suyo) o una raíz que no se reconoce. Perder la
-    ruta cruda sería peor que no traducirla, así que ante la duda no se inventa nada y
-    quien llama la deja tal cual."""
+    Devuelve (texto, punto). (None, None) si no es una ruta, el índice está fuera de rango o
+    la raíz no se reconoce: ante la duda no se inventa nada."""
     m = _RUTA_CAMPO.match((seccion or "").strip())
     if not m:
         return None, None
@@ -339,9 +249,7 @@ def _ruta_legible(seccion: str, informe) -> tuple[str | None, object | None]:
         return f"{base} — intervención {idx + 1}", punto_ryp
 
     if raiz == "identificacion_locutores":
-        # El auditor revisa el mapa de voces (ver DIARIZACION en plenos_informe), así que
-        # objeta aquí a menudo. Se nombra por la etiqueta, que es lo que la funcionaria ve
-        # en la primera sección de esta misma guía, no por el índice de la lista.
+        # Se nombra por la etiqueta (lo que ve la funcionaria en la guía), no por el índice.
         if indice is None:
             return "Mapa de voces", None
         idx = int(indice)
@@ -355,67 +263,46 @@ def _ruta_legible(seccion: str, informe) -> tuple[str | None, object | None]:
     return None, None
 
 
-# Marca "[HH:MM:SS] Interviniente X: " de la transcripción automática: es ruido para la
-# funcionaria (el tiempo ya se muestra aparte, en su propia línea con el enlace). El
-# separador "[...]" que el auditor mete para indicar un salto entre dos citas no lleva
-# dígitos y este patrón no lo toca, así que se conserva.
+# Marca "[HH:MM:SS] Interviniente X: " (ruido: el tiempo se muestra aparte). El "[...]" del
+# auditor no lleva dígitos y se conserva.
 _MARCA_TIEMPO_LOCUTOR = re.compile(r"\[\d{2}:\d{2}:\d{2}\]\s*(?:Interviniente\s+\S+:\s*)?")
 
 
 def _limpiar_evidencia(texto: str | None) -> str | None:
-    """La cita de la transcripción sin las marcas [HH:MM:SS] ni 'Interviniente X:',
-    dejando solo lo que se dijo. Los '[...]' que marcan un salto entre citas se
-    conservan tal cual."""
+    """La cita sin marcas [HH:MM:SS] ni 'Interviniente X:'; conserva los '[...]'."""
     if not texto:
         return texto
     limpio = _MARCA_TIEMPO_LOCUTOR.sub("", texto)
     return re.sub(r"[ \t]+", " ", limpio).strip()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# La frase literal que pegar en el buscador de Word (buscar_en_acta)
-# ══════════════════════════════════════════════════════════════════════════════
-# `afirmacion_dudosa` es la DESCRIPCIÓN que hace el auditor de lo que dice el acta, no
-# la frase tal cual: una funcionaria que la pega en el buscador de Word no encuentra
-# nada. `buscar_en_acta` reconstruye, verificando siempre contra el texto real del
-# informe, la frase que sí puede pegar.
+# buscar_en_acta: `afirmacion_dudosa` es una descripción del auditor, no la frase del acta;
+# se reconstruye la frase literal verificándola contra el informe.
 
 _COMILLAS = re.compile(r'[«"“]([^»"”]+)[»"”]')
 
 
 def _fragmentos_citados(texto: str) -> list[str]:
-    """Los fragmentos entre comillas (rectas, angulares o tipográficas) de `texto`, en
-    el orden en que aparecen. El auditor suele citar así, dentro de `afirmacion_dudosa`,
-    el trozo literal del acta que respalda su duda."""
+    """Fragmentos entre comillas (rectas, angulares o tipográficas) de `texto`, en orden."""
     return [f.strip() for f in _COMILLAS.findall(texto or "") if f.strip()]
 
 
 def _palabras_significativas(texto: str) -> set[str]:
-    """Palabras de cinco letras o más, normalizadas (ver `_normalizar`): las que de
-    verdad distinguen una frase de otra. Las cortas (artículos, preposiciones) sobran
-    para decidir cuál es 'la misma frase que la duda' y solo añaden ruido."""
+    """Palabras normalizadas de cinco letras o más (las que distinguen una frase de otra)."""
     return {w for w in _normalizar(texto).split() if len(w) >= 5}
 
 
 _FIN_FRASE = re.compile(r"(?<=[.!?])\s+")
 
-# Tratamientos que un acta municipal abrevia con punto y que, sin protegerlos, se
-# confunden con un punto y final ("La Sra. Teniente de Alcalde..." se trocearía en "La
-# Sra." + "Teniente de Alcalde..."): son justo los que más aparecen en este dominio
-# (ver CORPORACION y PRESIDENCIA en plenos_informe.py). Ceiling reconocido: una
-# abreviatura nueva que no esté en esta lista se sigue troceando mal; se añade aquí si
-# aparece.
+# Tratamientos abreviados con punto que no deben tomarse por fin de frase.
+# Una abreviatura nueva se añade aquí.
 _ABREVIATURAS = re.compile(r"\b(D|Dª|Dna|Sr|Sra|Srta|Excmo|Excma|Ilmo|Ilma)\.",
                            re.IGNORECASE)
 _MARCA_PUNTO_PROTEGIDO = "￼"  # carácter que no aparece en prosa real
 
 
 def _frases(texto: str) -> list[str]:
-    """Trocea un texto del informe en frases. Naive a propósito más allá de las
-    abreviaturas de tratamiento que protege `_ABREVIATURAS` (no distingue, por ejemplo,
-    un número decimal de un punto y final): esto es una ayuda para buscar, no un
-    analizador lingüístico, y una frase de más o de menos no rompe nada — el resultado
-    sigue siendo un fragmento literal del informe."""
+    """Trocea en frases; ingenuo a propósito (solo protege `_ABREVIATURAS`): basta como ayuda de búsqueda."""
     frases = []
     for parrafo in (texto or "").split("\n"):
         protegido = _ABREVIATURAS.sub(lambda m: m.group(1) + _MARCA_PUNTO_PROTEGIDO, parrafo)
@@ -427,17 +314,11 @@ def _frases(texto: str) -> list[str]:
 
 
 def _mejor_frase(afirmacion: str, candidatas: list[str]) -> str | None:
-    """La frase que más comparte con `afirmacion_dudosa`, puntuando por la PROPORCIÓN de
-    palabras significativas de la frase candidata que aparecen en la duda — no el
-    recuento bruto. El recuento bruto premia frases largas que solo comparten un par de
-    palabras por casualidad (p.ej. el nombre de alguien que también sale, sin relación,
-    en otra frase) por encima de la frase corta que trata exactamente lo mismo.
+    """Frase candidata que más comparte con la duda, puntuando por PROPORCIÓN de palabras
+    significativas (el recuento bruto premia frases largas que coinciden por casualidad).
 
-    El umbral (al menos tres palabras comunes y la mitad o más de las de la candidata)
-    se aplica ANTES de comparar, no después sobre la mejor puntuación global: si no, una
-    frase corta y de puntuación perfecta pero con una sola palabra en común (p.ej. "El
-    concejal D.", tras el troceo) gana la comparación y luego la descarta el umbral,
-    dejando sin ofrecer una frase más larga que sí lo cumplía de sobra."""
+    El umbral (3+ palabras comunes y >= 50%) se aplica ANTES de comparar, para que una frase
+    corta con una sola palabra común no desplace a una válida."""
     objetivo = _palabras_significativas(afirmacion)
     if not objetivo:
         return None
@@ -459,14 +340,8 @@ def _mejor_frase(afirmacion: str, candidatas: list[str]) -> str | None:
 
 
 def _textos_candidatos(seccion: str, informe) -> list[str]:
-    """Los textos reales del informe a los que `seccion` puede estar apuntando: la
-    fuente de verdad de `buscar_en_acta`. Nunca se devuelve nada que no esté aquí tal
-    cual — ofrecerle a la funcionaria una frase que no existe en el informe sería el
-    mismo fallo que se quiere arreglar, solo que con una frase inventada en vez de con
-    una ruta interna.
-
-    Mismo parseo de `seccion` que `_ruta_legible`, pero en vez del texto para pantalla
-    devuelve el contenido real del campo."""
+    """Textos reales del informe a los que puede apuntar `seccion` (fuente de verdad de
+    `buscar_en_acta`). Nunca devuelve nada que no esté en el informe."""
     m = _RUTA_CAMPO.match((seccion or "").strip())
     if m:
         raiz, indice, resto = m.groups()
@@ -479,17 +354,14 @@ def _textos_candidatos(seccion: str, informe) -> list[str]:
                     return [punto.titulo] if punto.titulo else []
                 if campo == "acuerdo":
                     return [punto.acuerdo] if punto.acuerdo else []
-                # 'texto', 'votacion' (que no tiene texto libre propio) o cualquier otro
-                # sufijo: la prosa del debate es lo único con frases literales que pegar.
+                # 'texto', 'votacion' u otro sufijo: solo la prosa del debate tiene frases que pegar.
                 return [punto.texto] if punto.texto else []
         if raiz == "ruegos_y_preguntas" and indice is not None:
             idx = int(indice)
             if 0 <= idx < len(informe.ruegos_y_preguntas):
                 bloque = informe.ruegos_y_preguntas[idx]
-                # `formulados_por` primero: cuando la duda es sobre QUIÉN habla (el caso
-                # real que motivó esto), es la candidata que gana por proporción de
-                # palabras compartidas, no por ir primera — el orden aquí solo importa
-                # para _fragmentos_citados, que se queda con la primera que case.
+                # `formulados_por` primero: si la duda es sobre QUIÉN habla, gana por proporción
+                # de palabras; el orden solo importa a _fragmentos_citados.
                 return [bloque.formulados_por, *bloque.puntos]
         if raiz in _CAMPOS_INFORME and indice is None and resto is None:
             valor = getattr(informe, raiz, None)
@@ -503,15 +375,10 @@ def _textos_candidatos(seccion: str, informe) -> list[str]:
 
 
 def buscar_en_acta(problema, informe) -> str | None:
-    """La frase LITERAL del acta que la funcionaria puede pegar en el buscador de Word
-    para localizar la duda del auditor. Cascada, verificando siempre contra el texto
-    real del informe:
+    """Frase LITERAL del acta para pegar en el buscador de Word, verificada contra el informe.
 
-    1. Un fragmento citado entre comillas en `afirmacion_dudosa` (el auditor suele citar
-       así el trozo literal): el primero que aparezca tal cual en el informe.
-    2. Si no hay ninguno así, la frase del informe que más comparte con la duda
-       (`_mejor_frase`).
-    3. `None` si ninguna de las dos da algo con confianza: no se inventa una frase."""
+    Cascada: fragmento entre comillas de `afirmacion_dudosa`; si no, la frase más parecida
+    (`_mejor_frase`); None si ninguna da confianza."""
     textos = _textos_candidatos(problema.seccion, informe)
     if not textos:
         return None
@@ -524,21 +391,11 @@ def buscar_en_acta(problema, informe) -> str | None:
 
 
 def objecion_legible(problema, informe, transcripcion: str, video_url: str | None) -> dict:
-    """Una objeción del auditor (`Problema`) en términos que entienda la funcionaria,
-    con el minuto de la grabación en el que comprobarla.
+    """Una objeción del auditor en términos de la funcionaria, con el minuto para comprobarla.
 
-    `problema.seccion` puede llegar como una ruta interna del JSON ('orden_del_dia[2].
-    texto') o ya en prosa ('Punto 3', un título): `_ruta_legible` prueba primero la
-    ruta, y solo si no la reconoce se prueba el casado en prosa de siempre.
-
-    Cascada de tiempos, de más a menos preciso: la cita literal localizada en la
-    transcripción, luego el timestamp de la votación del punto identificado, luego el
-    del propio punto. `hms` (y por tanto `enlace`) quedan en None si ninguno de los
-    tres da un dato: no se inventa un minuto.
-
-    `buscar` (ver `buscar_en_acta`) es la frase literal del INFORME que se puede pegar
-    en el buscador de Word — a diferencia de `dice` (`afirmacion_dudosa`), que es la
-    descripción que hace el auditor y casi nunca aparece tal cual en el documento."""
+    `seccion` puede ser ruta interna o prosa. Tiempo: cita localizada, timestamp de la votación
+    del punto o del punto; si ninguno, None. `buscar` es la frase literal del informe (a
+    diferencia de `dice`, la descripción del auditor)."""
     donde, punto = _ruta_legible(problema.seccion, informe)
     if donde is None:
         punto = _punto_de(problema.seccion, informe)
@@ -565,25 +422,13 @@ def objecion_legible(problema, informe, transcripcion: str, video_url: str | Non
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Aviso "COMPROBAR ANTES DE SELLAR.txt"
-# ══════════════════════════════════════════════════════════════════════════════
-# Vive aquí y no en asistente_plenos.py porque depende del mismo formato de objeción
-# que produce objecion_legible (donde/dice/motivo/se_oye/hms/enlace), y porque
-# procesar_pleno._componer_guia —que corre también en --rehacer-acta, sin pasar por
-# el asistente— necesita poder escribirlo junto con la guía HTML para que los dos
-# ficheros (y el acta) cuenten siempre lo mismo.
+# Aviso "COMPROBAR ANTES DE SELLAR.txt": vive aquí porque procesar_pleno._componer_guia
+# (también en --rehacer-acta) lo escribe junto a la guía.
 
 def _avisos_legibles(pendientes: list, objeciones: tuple) -> list[dict]:
-    """`objeciones` (de objecion_legible: donde/dice/motivo/se_oye/hms/enlace/buscar) si
-    las hay; si no, las reconstruye a partir de `pendientes` con los tres datos de
-    siempre y sin cita, minuto ni frase para buscar.
+    """`objeciones` si las hay; si no, las reconstruye desde `pendientes` sin cita ni minuto.
 
-    Hace falta el segundo camino porque `objeciones` puede venir vacía aunque
-    `pendientes` no: un pleno regenerado con datos de antes de que existiera la
-    guía, o una corrida donde la guía no se pudo componer. En los dos casos hay
-    algo que avisar, y perder el aviso por un cambio de formato sería peor que
-    mostrarlo sin cita ni minuto."""
+    Puede venir vacía con pendientes (datos antiguos o guía no compuesta) y el aviso no debe perderse."""
     if objeciones:
         return list(objeciones)
     return [{"donde": p.seccion, "dice": p.afirmacion_dudosa, "motivo": p.motivo,
@@ -591,19 +436,12 @@ def _avisos_legibles(pendientes: list, objeciones: tuple) -> list[dict]:
 
 
 def _lineas_aviso(numero: int, aviso: dict, con_enlace: bool) -> list[str]:
-    """Las líneas de un aviso, para la pantalla o para el fichero.
-
-    `se_oye`, el minuto y `buscar` solo se imprimen si el dato existe: no se inventa
-    nada, y dejar una línea a medias sería peor que no ponerla. `con_enlace` decide si
-    se escribe la dirección completa del vídeo (el fichero, que se lee en el
-    ordenador y esa dirección se puede pegar en el navegador) o solo el minuto en
-    texto (la pantalla, donde un enlace no se puede pulsar de todos modos)."""
+    """Líneas de un aviso; omite los datos que faltan. `con_enlace` escribe la URL completa
+    (fichero) o solo el minuto (pantalla)."""
     lineas = [f" {numero}. {aviso['donde']}",
               f"    El acta dice:   \"{aviso['dice']}\""]
     if aviso.get("buscar"):
-        # La frase LITERAL del informe, para pegar en el buscador de Word: a diferencia
-        # de la línea de arriba (la descripción del auditor), esta sí se encuentra tal
-        # cual en el documento.
+        # Frase literal del informe, a diferencia de "El acta dice" (descripción del auditor).
         lineas.append(f"    Búscalo en el acta:  «{aviso['buscar']}»")
     lineas.append(f"    Por qué dudo:   {aviso['motivo']}")
     if aviso.get("se_oye"):
@@ -618,8 +456,7 @@ def _lineas_aviso(numero: int, aviso: dict, con_enlace: bool) -> list[str]:
 
 
 def texto_comprobaciones(fecha: str, pendientes: list, objeciones: tuple = ()) -> str:
-    """La lista de objeciones del auditor, en cristiano, con la cita literal y el
-    minuto de la grabación cuando se conocen (ver _avisos_legibles)."""
+    """Lista de objeciones del auditor en cristiano, con cita y minuto si constan."""
     avisos = _avisos_legibles(pendientes, objeciones)
     lineas = [
         "PUNTOS QUE CONVIENE COMPROBAR CONTRA LA GRABACIÓN",
@@ -637,22 +474,16 @@ def texto_comprobaciones(fecha: str, pendientes: list, objeciones: tuple = ()) -
 
 def escribir_comprobaciones(carpeta: Path, fecha: str, pendientes: list,
                             objeciones: tuple = ()) -> Path | None:
-    """Guarda esa lista junto al acta. Sin esto vive solo en una consola que ella
-    va a cerrar, y la necesita justo después, con el documento abierto en Word.
-    Si no hay objeciones no se crea: su ausencia ya dice que no hay nada pendiente."""
+    """Guarda la lista junto al acta. Sin objeciones no se crea (y se borra la anterior)."""
     ruta = carpeta / "COMPROBAR ANTES DE SELLAR.txt"
     if not pendientes:
-        # Al reprocesar una fecha, el aviso de la vez anterior seguiría ahí contradiciendo
-        # a la pantalla, que acaba de decir que no hay nada que comprobar.
+        # Al reprocesar, el aviso anterior contradiría a la pantalla.
         ruta.unlink(missing_ok=True)
         return None
     ruta.write_text(texto_comprobaciones(fecha, pendientes, objeciones), encoding="utf-8")
     return ruta
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# HTML
-# ══════════════════════════════════════════════════════════════════════════════
 
 _CSS = """
 :root { color-scheme: light dark; }
@@ -750,8 +581,7 @@ section.asuntos h2 { color: #2c6e2c; }
 
 def _html_tiempo(hms: str | None, video_url: str | None,
                  prefijo: str = "▶ Ver en el vídeo") -> str:
-    """Un enlace al minuto si hay vídeo y tiempo; el tiempo en texto si solo hay
-    tiempo (audio local, sin URL); nada si ni siquiera eso consta."""
+    """Enlace al minuto si hay vídeo y tiempo; solo el tiempo si no hay URL; nada si no consta."""
     if not hms:
         return ""
     legible = _hms_legible(hms)
@@ -763,8 +593,7 @@ def _html_tiempo(hms: str | None, video_url: str | None,
 
 
 def _resultado_legible(v) -> str | None:
-    """Frase corta del resultado de la votación de un punto, con el recuento si
-    consta. None si el punto no llegó a votarse (o no se sometió a votación)."""
+    """Frase corta del resultado de la votación; None si no se votó."""
     if v is None or v.resultado == "sin votación":
         return None
     if v.resultado == "no consta":
@@ -786,9 +615,7 @@ def _bloque_objecion(o: dict, video_url: str | None) -> str:
     tiempo = _html_tiempo(o["hms"], video_url)
     se_oye = (f'<p><strong>Se oye en la grabación:</strong> «{html.escape(o["se_oye"])}»</p>'
               if o["se_oye"] else "")
-    # La frase LITERAL del informe (a diferencia de "Dice el acta", que es la
-    # descripción del auditor): en <code>, seleccionable de un clic (user-select:all)
-    # para pegarla directa en el buscador de Word.
+    # Frase literal del informe en <code>, seleccionable de un clic para el buscador de Word.
     buscar = (f'<p><strong>Búscalo en el acta:</strong> <code>{html.escape(o["buscar"])}</code></p>'
               if o.get("buscar") else "")
     return f"""    <li class="objecion">
@@ -802,9 +629,8 @@ def _bloque_objecion(o: dict, video_url: str | None) -> str:
 
 
 def _bloque_asunto(asunto, video_url: str | None) -> str:
-    """Un tema tratado fuera del orden del día. No lleva ni acuerdo ni votación —si los
-    tuviera sería un punto del acta (regla 16 ter)—: solo la síntesis, dónde surge y el
-    minuto para oírlo."""
+    """Tema fuera del orden del día: solo síntesis, dónde surge y minuto (con acuerdo o
+    votación sería un punto del acta, regla 16 ter)."""
     donde = (f'<p class="asunto-donde">En el debate de: {html.escape(asunto.surge_en)}</p>'
              if asunto.surge_en else "")
     tiempo = _html_tiempo(asunto.timestamp, video_url)
@@ -830,24 +656,16 @@ def _bloque_punto(punto, video_url: str | None) -> str:
   </div>"""
 
 
-# Los dos valores de escape de `VozIdentificada.persona` que NO son un nombre (ver
-# DIARIZACION y VozIdentificada en plenos_informe.py). La funcionaria no tiene por qué
-# saber qué significan tal cual salen del JSON, así que se traducen a una frase.
+# Valores de escape de `VozIdentificada.persona` que no son un nombre; se traducen a una frase.
 _VOZ_MEZCLADA = "etiqueta con voces mezcladas"
 _VOZ_NO_IDENTIFICADA = "no identificado en la grabación"
 
 
 def _aviso_voz(persona: str) -> str | None:
-    """La frase que le explica a la funcionaria por qué esta voz necesita comprobarse
-    en el vídeo, o None si `persona` es un nombre identificado con normalidad y no hace
-    falta ningún aviso.
+    """Aviso de por qué una voz debe comprobarse en el vídeo, o None si es un nombre normal.
 
-    Los dos casos no son el mismo problema: una etiqueta "no identificada" es una voz
-    que nunca se identificó (recuperable: sencillamente no se le pone nombre); una
-    etiqueta "con voces mezcladas" es el transcriptor fusionando a DOS personas
-    distintas bajo la misma etiqueta — el fallo real del pleno del 3 de septiembre de
-    2026, en el que unos ruegos de una vecina acabaron atribuidos a la Teniente de
-    Alcalde. Se avisa distinto para que la funcionaria sepa qué está comprobando."""
+    Mezclada (dos personas bajo una etiqueta) y no identificada son problemas distintos y se
+    avisan distinto."""
     if persona == _VOZ_MEZCLADA:
         return ("⚠ El transcriptor ha mezclado aquí a DOS PERSONAS DISTINTAS bajo la "
                 "misma voz: no te fíes de lo que el acta le atribuya sin comprobarlo en "
@@ -859,11 +677,7 @@ def _aviso_voz(persona: str) -> str | None:
 
 
 def _etiqueta_evidencia(persona: str) -> str:
-    """La frase que antecede a la cita de `evidencia`. "Se identifica porque:" no tiene
-    sentido delante de una voz que no se ha identificado, y menos delante de una que
-    mezcla a dos personas — son problemas distintos, no la misma frase con otro nombre
-    detrás, y la funcionaria necesita saber cuál de los tres está leyendo antes de leer
-    la cita."""
+    """Frase que antecede a la cita de `evidencia`, según el tipo de voz."""
     if persona == _VOZ_MEZCLADA:
         return "Aquí el transcriptor ha mezclado a dos personas:"
     if persona == _VOZ_NO_IDENTIFICADA:
@@ -872,12 +686,8 @@ def _etiqueta_evidencia(persona: str) -> str:
 
 
 def _aviso_conflicto(persona: str) -> str:
-    """La frase para una etiqueta identificada con normalidad (un nombre, no uno de los
-    valores de escape) que además figura en `conflictos_turnos_alternos`: el mapa le da
-    la misma persona que a otra etiqueta con la que se alterna en la grabación, y la
-    REGLA DE TURNOS ALTERNOS dice que dos etiquetas que se responden no pueden ser la
-    misma persona. Mismo peso visual que la voz mezclada (`voz-alerta`): las dos son un
-    error de identidad en el mapa, no un hueco honesto sin identificar."""
+    """Aviso para una etiqueta con nombre que alterna turnos con otra identificada como la
+    misma persona. Mismo peso visual que la voz mezclada: es un error de identidad."""
     return (f"⚠ Esta etiqueta se identifica aquí como {persona}, la misma persona que "
             "otra etiqueta distinta del mapa — pero las dos se responden entre sí en la "
             "grabación, y dos voces que se alternan no pueden ser la misma persona. "
@@ -887,15 +697,12 @@ def _aviso_conflicto(persona: str) -> str:
 
 def _bloque_voz(voz, video_url: str | None, conflicto: bool = False) -> str:
     tiempo = _html_tiempo(voz.timestamp, video_url)
-    # `conflicto` solo llega True para una etiqueta identificada con normalidad (ver
-    # conflictos_turnos_alternos: excluye ya los dos valores de escape), así que aquí
-    # nunca compite con el aviso de voz mezclada o sin identificar — son excluyentes.
+    # `conflicto` solo es True para etiquetas con nombre (ya excluye los valores de escape),
+    # así que no compite con los otros avisos.
     aviso = _aviso_conflicto(voz.persona) if conflicto else _aviso_voz(voz.persona)
     etiqueta_evidencia = _etiqueta_evidencia(voz.persona)
-    # Tres pesos visuales, no dos: la voz mezclada y el conflicto de turnos alternos son
-    # los dos más graves —pueden haber puesto en boca de una persona lo que dijo otra—
-    # y tienen que distinguirse de un vistazo de una voz simplemente sin identificar,
-    # que es un hueco honesto y no un error de atribución.
+    # Voz mezclada y conflicto son lo más grave (atribución errónea); la no identificada es
+    # un hueco honesto.
     if voz.persona == _VOZ_MEZCLADA or conflicto:
         clase = "voz voz-alerta"
     elif voz.persona == _VOZ_NO_IDENTIFICADA:
@@ -912,19 +719,10 @@ def _bloque_voz(voz, video_url: str | None, conflicto: bool = False) -> str:
 
 
 def _bloque_mapa_voces(informe, video_url: str | None, transcripcion: str) -> str:
-    """Sección con el mapa de voces (`identificacion_locutores`), si el informe lo
-    trae. Los borradores generados antes de que este campo existiera no lo traen
-    (lista vacía por compatibilidad — ver `InformePleno` en plenos_informe.py): en ese
-    caso la sección simplemente no aparece, no se inventa un mapa que no existe.
+    """Sección del mapa de voces; vacía si el informe no lo trae (borradores antiguos).
 
-    Va ANTES que las comprobaciones del auditor (ver `render_guia`): si una voz está
-    mal identificada, TODAS sus intervenciones a lo largo del pleno están mal
-    atribuidas en el acta, no solo la que el auditor haya podido objetar.
-
-    Antes de pintarlo, comprueba en la transcripción si dos etiquetas identificadas
-    como la misma persona se alternan hablando (`conflictos_turnos_alternos`): es la
-    misma verificación que se le pide al modelo en DIARIZACION, hecha aquí en Python
-    contra la sesión entera, por si no se aplicó."""
+    Va antes que las objeciones: una voz mal identificada contamina todas sus intervenciones.
+    Comprueba además los turnos alternos en Python (`conflictos_turnos_alternos`)."""
     if not informe.identificacion_locutores:
         return ""
     conflictivas = conflictos_turnos_alternos(informe, transcripcion)
@@ -943,11 +741,7 @@ def _bloque_mapa_voces(informe, video_url: str | None, transcripcion: str) -> st
 
 def render_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
                 destino: str) -> None:
-    """Escribe la guía de verificación HTML en `destino`.
-
-    Autocontenida (CSS embebido, sin librerías ni conexión a internet) para que se
-    pueda abrir con un doble clic. `entrada` es el `entrada.json` del borrador: de ahí
-    salen el título y la URL del vídeo, que no vive en el InformePleno."""
+    """Escribe la guía HTML autocontenida en `destino`; `entrada` aporta título y URL del vídeo."""
     video_url = entrada.get("video_url")
     titulo = entrada.get("titulo") or "Pleno del Ayuntamiento de Enguídanos"
     fecha = informe.fecha_pleno or entrada.get("fecha")
@@ -968,8 +762,7 @@ def render_guia(informe, entrada: dict, transcripcion: str, pendientes: list,
     </ul>
   </section>"""
 
-    # Informes generados antes de que el campo existiera (--rehacer-acta sobre un
-    # informe.json viejo) no lo traen: se omite la sección en vez de reventar.
+    # Informes antiguos no traen el campo: se omite la sección.
     asuntos = getattr(informe, "asuntos_no_convocados", None) or []
     bloque_asuntos = ""
     if asuntos:

@@ -252,3 +252,37 @@ Client Error" sin decir que era falta de saldo. `GROQ_API_KEY` y `ACTAS_DIR` sal
 
 Nueva página `wiki/sources/2026-09-15-claves-del-ayuntamiento-y-errores-http.md`; ampliados
 `asistente-para-la-funcionaria` y `pipeline-plenos`.
+
+## [2026-10-07] ingest | Mejoras tras las quejas del 7-X sobre el acta del 3-IX
+
+Contrastadas las quejas con la grabación: las justificadas eran atribución de reproches
+(«mutuas»), un dato reconstruido desde un fragmento confuso, una respuesta perdida en los
+ruegos, topónimos mal oídos y la forma de nombrar a quien preside. Prompts: reglas 6 bis,
+14 bis y 16 quater, y sus contrapesos en auditor y corrector (que ahora recibe también
+`CORPORACION`, que sus reglas ya citaban). Código: intervinientes por pleno (asistente,
+`--intervinientes`, keyterms, mensaje de los tres roles), `TOPONIMOS`, `normalizar_cargos`.
+No se cambia de modelo ni se trocea la transcripción. Nueva página
+`wiki/concepts/intervinientes-y-reglas-tras-el-7-x.md`.
+
+## [2026-10-08] ingest | Segunda acta del 3-IX: comprobaciones deterministas y fecha fija
+
+La regeneración con las reglas del 7-X arregló varias quejas pero afirmó que el acta del 7
+de julio se rechazó (3-2-2), fechó el pleno el 30 de septiembre y atribuyó a un concejal la
+pregunta de un vecino. Nuevo `incoherencias()` en el bucle, resultado deducido del recuento
+en `Votacion`, `fijar_fecha` en `procesar_pleno`, «Hoya de las Abejas» en `TOPONIMOS`, señales
+de público en DIARIZACION y verbos que califican en la 16 quater. Ampliada
+`wiki/concepts/intervinientes-y-reglas-tras-el-7-x.md`.
+
+
+## [2026-10-10] ingest | Auditor con otro modelo, atribuciones, citas y casos de queja
+
+El auditor pasa a Opus 5.5 (`anthropic/claude-opus-5.5`) (redactor y corrector siguen en Gemini),
+con pasada extra de atribuciones, `citas_no_halladas` y `toponimos_parecidos` en
+`incoherencias()`, y `quejas_pleno.py` para medir las quejas de cada pleno. Ampliada
+`wiki/concepts/intervinientes-y-reglas-tras-el-7-x.md`; CLAUDE.md actualizado.
+
+## [2026-10-10] ingest | Auditor Opus 5.5 y recuentos protegidos
+
+El auditor pasa a Opus 5.5 tras compararlo con Sonnet 5.5 sobre el acta del 3-IX. Nuevo
+`restaurar_recuentos` en el bucle y línea en los prompts del auditor y de atribuciones.
+Ampliada `wiki/concepts/intervinientes-y-reglas-tras-el-7-x.md`; CLAUDE.md actualizado.

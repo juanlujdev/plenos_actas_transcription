@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
-"""
-plenos_acta.py - Render determinista del acta: InformePleno → .docx.
-
-Sin LLM. Rellena la plantilla Word oficial del Ayuntamiento (una para plenos
-ordinarios y otra para extraordinarios) con los datos del informe.
-
-El acta escribe las cifras en palabras, así que este módulo incluye un
-conversor de 0 a 99: cubre horas, minutos, días, recuentos de votos y el año.
-# ponytail: tabla propia en vez de la dependencia num2words; 0-99 es todo lo
-# que un acta necesita. Si algún día hiciera falta más rango, cambiar aquí.
-"""
+"""plenos_acta.py - Render determinista (sin LLM) del acta: InformePleno → .docx sobre la
+plantilla oficial. Incluye un conversor 0-99 a palabras (ponytail: sin num2words)."""
 
 _UNIDADES = [
     "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
@@ -75,30 +66,20 @@ PLANTILLAS = {"ordinaria": "acta_ordinaria.docx",
 
 HUECO = "___________"
 
-# Sangría de primera línea de los párrafos de cuerpo (la tabulación del acta real).
-# En EMU, que es la unidad de python-docx; se expresa como un número exacto de twips
-# porque es lo que Word guarda en el XML: un Cm(1,25) se redondearía al twip más
-# cercano y volvería leído como otro número. 709 twips = 1,2503 cm.
-# Es un int y no docx.shared.Cm para no subir el import de docx al módulo, que hoy
-# es perezoso: las funciones de texto se prueban sin python-docx.
+# Sangría de primera línea (1,25 cm) en EMU. Se expresa en twips exactos (709) porque
+# Word redondea; es un int para no importar docx.shared a nivel de módulo (import perezoso).
 SANGRIA = 709 * 635
 
-# Índices de las anclas dentro de la plantilla. Las dos plantillas son
-# estructuralmente idénticas (9 tablas), así que sirven para ambas.
+# Índices de las anclas en la plantilla (ambas tienen las mismas 9 tablas).
 _T_EXPEDIENTE, _T_DATOS = 1, 2
-# La plantilla reparte los puntos en tres bloques —A) PARTE RESOLUTIVA, B) ACTIVIDAD DE
-# CONTROL, C) RUEGOS Y PREGUNTAS—, pero el acta que la secretaría firma no los usa:
-# numera los puntos como vienen en el orden del día y los escribe seguidos bajo un único
-# encabezado. Se reaprovecha la banda de A) como ese encabezado y se eliminan los otros
-# dos bloques y sus tablas de contenido.
+# Se reaprovecha la banda de A) como único encabezado "ORDEN DEL DÍA" y se borran las demás.
 _T_ENCABEZADO_ORDEN, _T_ORDEN = 3, 4
 _T_SOBRANTES = (8, 7, 6, 5)  # de mayor a menor: borrar por índice no desplaza los previos
 _FILA_TIPO, _FILA_FECHA, _FILA_DURACION, _FILA_PRESIDENTE = 1, 2, 3, 5
 
 _RESULTADO = {"aprobado": "queda aprobado", "rechazado": "queda rechazado"}
 
-# El párrafo fijo que trae la plantilla, en masculino genérico. Se sustituye por la
-# fórmula con el género de quien preside y de quien da fe (ver PRESIDENCIA).
+# Párrafo fijo de la plantilla (masculino genérico); se reescribe según PRESIDENCIA.
 _FORMULA_PLANTILLA = ("Una vez verificada por el Secretario la válida constitución del "
                       "órgano, el Presidente abre sesión, procediendo a la deliberación "
                       "sobre los asuntos incluidos en el Orden del Día")
@@ -107,15 +88,34 @@ _FORMULA_PLANTILLA = ("Una vez verificada por el Secretario la válida constituc
 # ── composición de textos ─────────────────────────────────────────────────────
 
 def comillas(texto: str) -> str:
-    """Comillas rectas → tipográficas dobles (“ ”), que es lo que usa el acta oficial
-    ("...denominado “LOSILLA, MATALLANA Y OTROS”..."). El modelo tiene la regla en su
-    prompt, pero llegó a escribir "la playeta" en el texto y 'la playeta' en el acuerdo
-    del mismo punto: un criterio tipográfico se garantiza aquí, no pidiéndolo.
-    Solo se tocan los pares; una comilla suelta (un 5" de diámetro, un apóstrofo) se
-    queda como está."""
+    """Comillas rectas → tipográficas dobles (“ ”). Garantizado aquí porque el modelo
+    mezcla tipos. Solo se tocan los pares; una comilla suelta se deja como está."""
     par = lambda m: f"“{m.group(1)}”"
     texto = re.sub(r'"([^"\n]{1,300})"', par, texto)
     return re.sub(r"'([^'\n]{1,300})'", par, texto)
+
+
+_ALCALDESA = re.compile(r"\b(?:(la)\s+)?(?:Sra\.\s+)?alcaldesa"
+                        r"(?:\s+(?:accidental|en\s+funciones|suplente|interina))?\b", re.IGNORECASE)
+
+
+def normalizar_cargos(texto: str) -> str:
+    """Sustituye «la (Sra.) alcaldesa (en funciones…)» por el tratamiento de PRESIDENCIA, salvo
+    entre comillas, donde es una cita y no un tratamiento."""
+    def sustituir(m):
+        tratamiento = PRESIDENCIA["tratamiento"]
+        previo = m.string[:m.start()].rstrip(" ")
+        inicio_de_frase = not previo or previo[-1] in ".:;\n"
+        return tratamiento[0].upper() + tratamiento[1:] if inicio_de_frase else tratamiento
+
+    fuera_de_citas = re.split(r"(“[^”]*”)", texto)
+    return "".join(t if t.startswith("“") else _ALCALDESA.sub(sustituir, t)
+                   for t in fuera_de_citas)
+
+
+def tipografia(texto: str) -> str:
+    """Todo lo que se escribe en el acta pasa por aquí: comillas tipográficas y cargos."""
+    return normalizar_cargos(comillas(texto))
 
 
 def _enumerar(elementos: list[str]) -> str:
@@ -126,12 +126,10 @@ def _enumerar(elementos: list[str]) -> str:
 
 
 def _recuento_en_letra(v: Votacion) -> str:
-    """Solo los recuentos que constan. Un None es 'no se dijo': darlo por cero
-    inventaría un dato (llegó a publicarse 'rechazado, 0 en contra')."""
+    """Solo los recuentos que constan: un None es 'no se dijo', no cero."""
     partes = []
     if v.a_favor is not None:
-        # "uno" se apocopa a "un" delante de un nombre masculino ("un voto",
-        # no "uno voto"); letras() no lo sabe porque es un conversor genérico.
+        # "uno" se apocopa a "un" ante "voto"; letras() es genérico y no lo sabe.
         cantidad = "un" if v.a_favor == 1 else letras(v.a_favor)
         partes.append(f"{cantidad} {'voto' if v.a_favor == 1 else 'votos'} a favor")
     if v.en_contra is not None:
@@ -159,9 +157,7 @@ def frase_votacion(v: Votacion | None) -> str:
 
 
 def frase_acuerdo(punto) -> str:
-    """Cierre de un punto resolutivo. El acta integra el recuento en la propia fórmula
-    del acuerdo —"ACUERDA: ..., por tres votos a favor, tres en contra"— en vez de
-    añadir una frase de votación aparte, que sonaba a repetición."""
+    """Cierre de un punto resolutivo, con el recuento integrado en la fórmula del acuerdo."""
     v = punto.votacion
     acuerdo = (punto.acuerdo or "").strip().rstrip(".")
     if not acuerdo or (v is not None and v.resultado == "rechazado"):
@@ -180,9 +176,8 @@ def frase_acuerdo(punto) -> str:
 
 
 def parrafos_apertura(informe: InformePleno) -> list[str]:
-    """Encabezado narrativo del acta: dónde y cuándo se reúne el Pleno, quién preside y
-    en virtud de qué, quién asiste, y las declaraciones que la Presidencia pronuncia al
-    abrir la sesión. Solo nombra a quien la grabación identifica."""
+    """Encabezado narrativo del acta: lugar, fecha, Presidencia, asistentes y declaraciones
+    de apertura."""
     hora = hora_en_letra(informe.hora_inicio) if informe.hora_inicio else HUECO
     fecha = fecha_larga(informe.fecha_pleno) if informe.fecha_pleno else HUECO
     tipo = informe.tipo_sesion if informe.tipo_sesion != "no consta" else HUECO
@@ -218,33 +213,20 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
 
 
 def formula_cierre(informe: InformePleno) -> str:
-    """Fórmula final del acta. La plantilla no la trae; el acta real sí."""
-    # Mismo criterio que la celda "Presidida por": si la grabación no identifica a quien
-    # preside, manda PRESIDENCIA, que es el dato curado a mano y se revisa cada vez que
-    # cambia quién preside. El acta ya afirma "la Presidenta abre la sesión" desde ahí sin
-    # pedirle permiso a la grabación; el cierre no tiene por qué ser más tímido que la
-    # apertura. Antes esto era `or HUECO`, y como el modelo devolvía la fórmula de escape
-    # ("no identificado en la grabación") en vez de null, el acta del 2026-09-03 cerró con
-    # "...cumpliendo con el objeto del acto, no identificado en la grabación levanta la
-    # sesión..." (el literal lo ataja ahora InformePleno._presidente_o_nada).
+    """Fórmula final del acta (la plantilla no la trae)."""
+    # Sin presidente identificado manda PRESIDENCIA, igual que en la apertura.
     presidente = informe.presidente or PRESIDENCIA["tratamiento"]
     hora = hora_en_letra(informe.hora_fin) if informe.hora_fin else HUECO
     fecha = fecha_en_letra(informe.fecha_pleno) if informe.fecha_pleno else HUECO
-    # "Secretaria – Interventora" lleva raya (–), no guion, tal como en el acta
-    # real firmada: "...lo cual como Secretaria – Interventora, doy fe."
+    # "Secretaria – Interventora" lleva raya (–), no guion, como el acta firmada.
     return (f"Y no habiendo más asuntos que tratar y cumpliendo con el objeto del acto, "
             f"{presidente} levanta la sesión a {hora} del día de hoy, {fecha}, lo cual "
             f"como Secretaria – Interventora, doy fe.")
 
 
 def _texto_punto(punto) -> list:
-    """Un punto del orden del día como lista de bloques. El modelo separa los bloques de
-    debate con una línea en blanco; aquí se convierten en párrafos del documento.
-
-    El primero es la tupla (encabezado, ""): el título va en negrita en su propio
-    párrafo —"2º) APROBACIÓN SI PROCEDE DE LOS APROVECHAMIENTOS FORESTALES DEL EJERCICIO
-    2026."— y el cuerpo empieza en el renglón siguiente. Ese párrafo de título es el
-    único del punto que no lleva sangría."""
+    """Un punto como lista de bloques (los de debate se separan por línea en blanco).
+    El primero es la tupla (encabezado, ""): título en negrita, en su propio párrafo."""
     numero = f"{punto.numero}º) " if punto.numero is not None else ""
     parrafos = [p.strip() for p in punto.texto.split("\n\n") if p.strip()]
     bloques = [(f"{numero}{punto.titulo}.", ""), *parrafos]
@@ -255,17 +237,16 @@ def _texto_punto(punto) -> list:
 
 
 def _por_orden_del_dia(puntos):
-    """Los puntos van como los numera la convocatoria, no agrupados por parte. Los que
-    no llevan número (asuntos de urgencia) cierran, en el orden en que se trataron."""
+    """Orden de la convocatoria; los puntos sin número (urgencia) cierran."""
     return sorted(puntos, key=lambda p: (p.numero is None, p.numero or 0))
 
 
 # ── manipulación del .docx ────────────────────────────────────────────────────
 
 def _escribir(parrafo, texto: str) -> None:
-    """Sustituye el texto conservando el formato del primer run. Único punto por el que
-    pasa todo lo que se escribe en el documento, así que aquí se unifican las comillas."""
-    texto = comillas(texto)
+    """Sustituye el texto conservando el formato del primer run. Todo lo escrito pasa por
+    aquí, así que aquí se aplica la tipografía."""
+    texto = tipografia(texto)
     if parrafo.runs:
         parrafo.runs[0].text = texto
         for run in parrafo.runs[1:]:
@@ -275,10 +256,8 @@ def _escribir(parrafo, texto: str) -> None:
 
 
 def _cuerpo(parrafo, sangria: bool):
-    """Formato de un párrafo del cuerpo. La alineación se pone a None a propósito: la
-    plantilla trae su párrafo de ejemplo con un `jc` centrado directo y, al reutilizarlo
-    como modelo, el primer punto del orden del día salía centrado. Quitarlo lo deja
-    heredando lo mismo que el resto del documento, que es lo que se pide."""
+    """Formato de un párrafo del cuerpo. Alineación a None a propósito: el párrafo de
+    ejemplo de la plantilla trae `jc` centrado directo y contagiaba el primer punto."""
     parrafo.paragraph_format.alignment = None
     parrafo.paragraph_format.first_line_indent = SANGRIA if sangria else 0
     return parrafo
@@ -291,7 +270,7 @@ def _escribir_bloque(parrafo, bloque) -> None:
         cabecera, resto = bloque
         _escribir(parrafo, cabecera)
         parrafo.runs[0].bold = True
-        parrafo.add_run(comillas(resto)).bold = False
+        parrafo.add_run(tipografia(resto)).bold = False
     else:
         _escribir(parrafo, bloque)
     _cuerpo(parrafo, sangria=not isinstance(bloque, tuple))
@@ -315,8 +294,7 @@ def _poner_parrafos(celda, bloques: list) -> None:
 
 
 def _parrafo_con_texto(doc, texto: str):
-    """Localiza un párrafo del cuerpo por su contenido. Más robusto que el
-    índice: si la plantilla gana un salto de línea, el índice se desplaza."""
+    """Localiza un párrafo por su contenido (más robusto que el índice)."""
     for parrafo in doc.paragraphs:
         if parrafo.text.strip() == texto:
             return parrafo
@@ -335,8 +313,7 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
 
     doc = Document(str(PLANTILLAS_DIR / PLANTILLAS[informe.tipo_sesion]))
 
-    # El PLN/2026/N de la plantilla es un número de ejemplo: copiarlo publicaría
-    # un expediente falso. Lo rellena la secretaria.
+    # El PLN/2026/N de la plantilla es un ejemplo: lo rellena la secretaria.
     _poner_celda(doc.tables[_T_EXPEDIENTE].rows[1].cells[0], HUECO)
 
     datos = doc.tables[_T_DATOS]
@@ -352,32 +329,25 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
         _poner_celda(datos.rows[_FILA_DURACION].cells[1],
                      f"Desde las {informe.hora_inicio} hasta las {informe.hora_fin} horas")
     if informe.presidente:
-        # La plantilla trae su propio valor de ejemplo en mayúsculas
-        # ("LORENA LUJÁN CHUJFI"); el acta real firmada también lo hace
-        # ("SERGIO DE FEZ CEREZUELA"). Uniformar el caso del dato del informe
-        # con la convención de la celda.
+        # La celda va en mayúsculas, como en el acta firmada.
         _poner_celda(datos.rows[_FILA_PRESIDENTE].cells[1], informe.presidente.upper())
 
-    # El hueco de la plantilla es un solo párrafo; el encabezado del acta son varios.
-    # El primero reaprovecha ese párrafo (y su estilo) y el resto se inserta detrás,
-    # antes de la fórmula fija, que también se reescribe con el género de la Presidencia.
+    # El primer párrafo reaprovecha el hueco (y su estilo); el resto va antes de la
+    # fórmula fija de la plantilla, que se elimina.
     apertura = parrafos_apertura(informe)
     hueco = _parrafo_con_texto(doc, HUECO)
     _escribir(hueco, apertura[0])
     _cuerpo(hueco, sangria=True)
     formula = _parrafo_con_texto(doc, _FORMULA_PLANTILLA)
     for texto in apertura[1:]:
-        _cuerpo(formula.insert_paragraph_before(comillas(texto), style=hueco.style),
+        _cuerpo(formula.insert_paragraph_before(tipografia(texto), style=hueco.style),
                 sangria=True)
     formula._element.getparent().remove(formula._element)
 
     _poner_celda(doc.tables[_T_ENCABEZADO_ORDEN].rows[0].cells[0], "ORDEN DEL DÍA")
     parrafos = [linea for p in _por_orden_del_dia(informe.orden_del_dia)
                 for linea in _texto_punto(p)]
-    # Cuando la convocatoria numera RUEGOS Y PREGUNTAS, el punto ya viene en
-    # orden_del_dia y su encabezado ya está escrito: añadir otro lo duplicaba en el acta.
-    # Solo se anuncia aquí si el orden del día no lo trae; sin numerar, porque el número
-    # que le dé la convocatoria no lo sabe este módulo e inventarlo sería un dato.
+    # Si RUEGOS Y PREGUNTAS ya viene numerado en orden_del_dia no se repite; si no, va sin número.
     ya_anunciado = any("RUEGOS Y PREGUNTAS" in (p.titulo or "").upper()
                        for p in informe.orden_del_dia)
     if informe.ruegos_y_preguntas and not ya_anunciado:

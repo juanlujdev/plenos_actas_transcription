@@ -79,10 +79,7 @@ test("ruegos agrupados por quien los formula",
      informe.ruegos_y_preguntas[0].formulados_por, "D. Joaquín Martínez")
 test("ausentes recogidos", informe.ausentes, ["Fernando Pons"])
 
-# El mapa de voces (identificacion_locutores) es nuevo: un informe SIN ese campo tiene
-# que seguir validando (compatibilidad con los borradores ya guardados en disco, que
-# --rehacer-acta relee), y con lista vacía por defecto — no null, para que el código
-# que la recorre (render_guia, el auditor) no tenga que comprobar None aparte.
+# El mapa de voces es nuevo: un informe sin ese campo debe seguir validando (borradores antiguos); lista vacía, no null.
 test("mapa de voces: un informe sin el campo sigue validando", informe.identificacion_locutores, [])
 
 from plenos_informe import VozIdentificada
@@ -108,10 +105,7 @@ test("mapa de voces: cada entrada guarda su etiqueta, persona y evidencia",
       _informe_con_mapa.identificacion_locutores[1].persona),
      ("B", "Lorena Luján Chujfi"))
 
-# Fallo real del 3 de septiembre de 2026: la etiqueta B fusionó a quien presidía y a
-# una vecina asistente. `persona` sigue siendo un str libre (sin enum), así que este
-# valor de escape valida sin tocar el esquema — y un informe ya guardado en disco que
-# no lo usa (el caso de arriba) sigue validando exactamente igual.
+# Valor de escape: `persona` es str libre, así que valida sin tocar el esquema.
 _voz_mezclada = VozIdentificada(
     etiqueta="B", persona="etiqueta con voces mezcladas",
     evidencia=("[00:00:32] Interviniente B: Damos comienzo al Pleno...; "
@@ -123,8 +117,7 @@ test("mapa de voces: 'etiqueta con voces mezcladas' valida como persona",
 test("mapa de voces: un informe ya guardado sin esa etiqueta sigue validando igual",
      len(_informe_con_mapa.identificacion_locutores), 2)
 
-# Las vías de escape tienen que seguir siendo válidas: un pleno del que no se
-# sabe casi nada debe parsear igual, sin forzar al modelo a rellenar huecos.
+# Las vías de escape siguen siendo válidas con casi todo vacío.
 _MINIMO_VACIO = dict(INFORME_MINIMO, tipo_sesion="no consta", fecha_pleno=None,
                      hora_inicio=None, hora_fin=None, presidente=None,
                      asistentes=[], ausentes=[], declaraciones_apertura=[],
@@ -146,9 +139,7 @@ try:
 except Exception:
     test("informe incompleto rechazado", "ValidationError", "ValidationError")
 
-# El esquema no se fía de la descripción del campo: normaliza lo que el documento
-# necesita en un formato concreto. La primera ejecución con el pleno de mayo devolvió
-# fecha_pleno="19 de mayo de 2026" y el render reventó tras pagar el bucle entero.
+# El esquema normaliza los formatos que necesita el documento; no se fía de la descripción del campo.
 from plenos_informe import normalizar_fecha, normalizar_hora
 
 test("fecha: ISO se conserva", normalizar_fecha("2026-05-19"), "2026-05-19")
@@ -161,8 +152,6 @@ test("fecha: sin fecha", normalizar_fecha("Pleno ordinario"), None)
 test("hora: HH:MM se conserva", normalizar_hora("12:02"), "12:02")
 test("hora: con coletilla", normalizar_hora("las 12:02 horas"), "12:02")
 test("hora: se rellena a dos dígitos", normalizar_hora("9:05"), "09:05")
-# "02:39:28" era la marca de tiempo de la transcripción, no una hora: el acta habría
-# hecho constar que el Pleno se levantó a las dos y media de la madrugada.
 test("hora: una marca de tiempo no es una hora", normalizar_hora("02:39:28"), None)
 test("hora: hora imposible se descarta", normalizar_hora("25:00"), None)
 
@@ -171,11 +160,7 @@ _mal_formateado = InformePleno.model_validate(dict(
 test("informe: la fecha en prosa llega normalizada", _mal_formateado.fecha_pleno, "2026-05-19")
 test("informe: la marca de tiempo no pasa como hora de cierre", _mal_formateado.hora_fin, None)
 
-# `presidente` pide null cuando no se identifica a quien preside, pero el modelo devuelve
-# la fórmula de escape de otros campos. Como es una cadena no vacía, el acta del 2026-09-03
-# cerró con "...cumpliendo con el objeto del acto, no identificado en la grabación levanta
-# la sesión...". Se normaliza en el esquema, que arregla de una vez la fórmula de cierre y
-# la celda "Presidida por".
+# `presidente` pide null si no se identifica, pero el modelo cuela la fórmula de escape de otros campos.
 for _escape in ("no identificado en la grabación", "No identificado en la grabacion.",
                 "no consta"):
     test(f"informe: '{_escape}' no es un nombre de presidencia",
@@ -185,8 +170,7 @@ test("informe: un nombre real de presidencia se conserva",
                                       presidente="Dª Lorena Luján Chujfi")).presidente,
      "Dª Lorena Luján Chujfi")
 
-# El modelo devuelve a veces el acuerdo con la fórmula ya escrita, y el acta la decía
-# dos veces; y cuela el cierre de un punto de control donde no hay acuerdo del Pleno.
+# El modelo devuelve a veces el acuerdo con la fórmula ya escrita, o lo cuela en puntos sin acuerdo.
 _con_formula = PuntoOrdenDia.model_validate(
     {"numero": 1, "parte": "resolutiva", "titulo": "T", "texto": "x",
      "acuerdo": "El Pleno del Ayuntamiento ACUERDA, por unanimidad, aprobar la exención.",
@@ -215,7 +199,6 @@ _problema = Problema(seccion="orden_del_dia", afirmacion_dudosa="aprobado 5-2",
 
 test("MAX_VUELTAS es 3", MAX_VUELTAS, 3)
 
-# Caso 1: el auditor da el visto bueno a la primera → 1 auditoría, 0 correcciones
 llamadas = {"generar": 0, "auditar": 0, "corregir": 0}
 def _gen_ok(t):
     llamadas["generar"] += 1
@@ -233,7 +216,6 @@ test("visto bueno directo: 1 generación", llamadas["generar"], 1)
 test("visto bueno directo: 1 auditoría", llamadas["auditar"], 1)
 test("visto bueno directo: 0 correcciones", llamadas["corregir"], 0)
 
-# Caso 2: 1 problema que la corrección resuelve → 2 auditorías, 1 corrección
 estado = {"auditorias": 0, "correcciones": 0}
 def _aud_una_vez(t, inf):
     estado["auditorias"] += 1
@@ -242,8 +224,6 @@ def _aud_una_vez(t, inf):
     return AuditoriaInforme(problemas=[])
 def _cor(t, inf, probs):
     estado["correcciones"] += 1
-    # Una corrección de verdad cambia algo. Un corrector que devuelve el informe intacto
-    # ya no provoca otra auditoría: el bucle sale, ver el caso 5.
     return inf.model_copy(update={"resumen_corto": "corregido"})
 
 informe, pendientes = bucle_informe("t", generar=_gen_ok, auditar=_aud_una_vez, corregir=_cor)
@@ -251,10 +231,7 @@ test("corrección resuelve: sin pendientes", pendientes, [])
 test("corrección resuelve: 2 auditorías", estado["auditorias"], 2)
 test("corrección resuelve: 1 corrección", estado["correcciones"], 1)
 
-# Caso 3: el auditor nunca queda contento → tope de 3 correcciones y devuelve pendientes.
-# El corrector falso tiene que cambiar algo en cada vuelta: uno que devuelve el informe
-# intacto ya no agota el tope, porque el bucle sale en cuanto una corrección no cambia
-# nada (ver caso 5).
+# Caso 3: tope de 3 correcciones. El corrector falso cambia algo cada vuelta (si no, el bucle sale antes: caso 5).
 contador = {"correcciones": 0}
 def _aud_nunca_contento(t, inf):
     return AuditoriaInforme(problemas=[_problema])
@@ -303,8 +280,7 @@ _obj_votacion = Problema(seccion=_RUTA_VOT,
                          motivo="la grabación no lo declara",
                          evidencia="[00:58:04] Aprobada.")
 
-# Caso 4: el ping-pong real del 2026-08-29. El auditor pide 'rechazado', y tres vueltas
-# después vuelve a objetar el mismo campo. El acta no puede afirmar ninguno de los dos.
+# Caso 4: ping-pong del auditor sobre el mismo campo; el acta no puede afirmar ninguno de los dos.
 _vueltas_pp = {"n": 0}
 def _gen_aprobado(t):
     return _con_resultado("aprobado")
@@ -320,8 +296,7 @@ test("ping-pong: el acta no afirma ninguna de las dos posturas",
      _resultado_de(_inf_pp), "no consta")
 test("ping-pong: la objeción sigue viva para que la vea una persona", len(_pend_pp), 1)
 
-# Caso 4b: mismo campo disputado, pero el bucle se queda sin vueltas antes de que el
-# valor vuelva atrás — exactamente lo que pasó el 2026-08-29. También tiene que escapar.
+# Caso 4b: se acaban las vueltas antes de que el valor vuelva atrás; también tiene que escapar.
 def _cor_una_vez(t, inf, probs):
     return _con_resultado("rechazado")
 
@@ -357,9 +332,7 @@ test("salida temprana: una corrección sin cambios no gasta las 3 vueltas",
      _sin_cambio["correcciones"], 1)
 test("salida temprana: tampoco vuelve a auditar", _sin_cambio["auditorias"], 1)
 
-# Caso 6: el auditor de cada vuelta recibe las rutas que el corrector acaba de tocar.
-# Se calculan en Python comparando los dos JSON —no se le pregunta al corrector qué
-# cambió, que es justo el que se equivoca— y son una pista, no un recorte del ámbito.
+# Caso 6: el auditor recibe las rutas que el corrector tocó (calculadas en Python; son pista, no recorte).
 import contextlib
 import io
 
@@ -367,6 +340,8 @@ import plenos_informe as _pi_rutas
 
 _vistas = []
 _reales_r = (_pi_rutas.generar_informe, _pi_rutas.auditar_informe, _pi_rutas.corregir_informe)
+_atrib_real = _pi_rutas.auditar_atribuciones
+_pi_rutas.auditar_atribuciones = lambda t, i, c=None, **k: AuditoriaInforme(problemas=[])
 try:
     def _gen_r(t, convocatoria=None):
         return _con_resultado("aprobado")
@@ -382,6 +357,7 @@ try:
 finally:
     (_pi_rutas.generar_informe, _pi_rutas.auditar_informe,
      _pi_rutas.corregir_informe) = _reales_r
+    _pi_rutas.auditar_atribuciones = _atrib_real
 
 test("rutas: la primera auditoría no recibe ninguna (no ha corregido nadie)", _vistas[0], [])
 test("rutas: la auditoría de vuelta recibe el campo que el corrector tocó",
@@ -408,8 +384,7 @@ texto = unir_segmentos([(0.0, resp_a), (1800.0, resp_b)])
 test("segmentos: primera línea", texto.splitlines()[0], "[00:00:00] Buenas tardes.")
 test("segmentos: offset del segundo chunk", texto.splitlines()[2], "[00:30:01] Segundo fragmento.")
 
-# AssemblyAI: start viene en milisegundos, y la etiqueta de locutor va delante del texto
-# para que el redactor pueda agrupar intervenciones sin confundirla con un nombre.
+# start viene en milisegundos; la etiqueta de locutor va delante del texto.
 utts = [{"start": 0, "end": 4000, "speaker": "A", "text": " Buenas tardes. "},
         {"start": 1801200, "end": 1806000, "speaker": "B", "text": "Segundo fragmento."}]
 diarizado = formatear_utterances(utts)
@@ -427,15 +402,11 @@ test("keyterms: dentro de los topes de la API",
      (len(AAI_KEYTERMS) <= 1000, max(len(k.split()) for k in AAI_KEYTERMS) <= 6),
      (True, True))
 
-# El pleno del 3 de septiembre de 2026 tuvo intervenciones de una vecina asistente que
-# la etiqueta de locutor confundió con quien presidía: el prompt de contexto tiene que
-# avisar a AssemblyAI de que hay público y de que a veces interviene, no solo de la
-# Corporación.
+# El contexto debe avisar de que hay público que a veces interviene, no solo la Corporación.
 test("AAI_PROMPT: menciona que asiste público", "público" in AAI_PROMPT, True)
 test("AAI_PROMPT: menciona que intervienen vecinos",
      "vecinos" in AAI_PROMPT and "ruegos y preguntas" in AAI_PROMPT, True)
-# La doc de AssemblyAI pide 5-50 palabras en prosa: un prompt desmedido no ayuda más y
-# se sale de lo que el campo espera.
+# La doc de AssemblyAI pide 5-50 palabras en prosa.
 test("AAI_PROMPT: longitud dentro de lo razonable (5-70 palabras)",
      5 <= len(AAI_PROMPT.split()) <= 70, True)
 
@@ -522,8 +493,7 @@ test("votación: recuento sin cifras no inventa ceros",
      "Sometido el asunto a votación, queda aprobado.")
 test("votación: sin votación no genera frase", frase_votacion(None), "")
 
-# Cierre de un punto resolutivo: el recuento va DENTRO de la fórmula del acuerdo. Antes
-# se añadía una frase de votación aparte y el acta repetía dos veces lo mismo.
+# El recuento va dentro de la fórmula del acuerdo, sin frase de votación aparte.
 def _punto(**kw):
     return PuntoOrdenDia.model_validate(dict(
         {"numero": 1, "parte": "resolutiva", "titulo": "T", "texto": "x",
@@ -569,8 +539,7 @@ test("apertura: constitución verificada por la Secretaria, en femenino",
 test("apertura: sin datos deja huecos",
      HUECO in "\n".join(parrafos_apertura(_vacio)), True)
 
-# Lo que la Presidencia declara al abrir (grabación, delegación, exclusión de un punto)
-# va en el encabezado del acta, no dentro del primer punto del orden del día.
+# Lo que declara la Presidencia al abrir va en el encabezado, no en el primer punto.
 _con_declaraciones = InformePleno.model_validate(dict(
     INFORME_MINIMO, declaraciones_apertura=["La Sesión tiene carácter público."]))
 _ap_decl = "\n".join(parrafos_apertura(_con_declaraciones))
@@ -589,8 +558,7 @@ test("cierre: Secretaria con raya, como en el acta real", "Secretaria – Interv
 
 
 def _acta_generada(inf):
-    """Genera el .docx y devuelve (texto de las tablas, texto de los párrafos).
-    Se comprueba el documento real, no una representación intermedia."""
+    """Genera el .docx y devuelve (texto de las tablas, texto de los párrafos)."""
     ruta = os.path.join(tempfile.gettempdir(), "test_acta.docx")
     render_acta(inf, ruta)
     d = _Document(ruta)
@@ -608,8 +576,7 @@ test("acta: presidente de la grabación en mayúsculas, como la celda de la plan
      "SERGIO DE FEZ CEREZUELA" in _tablas[2], True)
 test("acta: expediente en blanco", "PLN/2026/" in _tablas[1], False)
 test("acta: expediente sustituido por el hueco", HUECO in _tablas[1], True)
-# El acta que firma la secretaría no reparte los puntos en A) resolutiva / B) control /
-# C) ruegos: los escribe seguidos, numerados como vienen en el orden del día.
+# El acta lista los puntos seguidos, sin las bandas A) / B) / C).
 test("acta: un único encabezado ORDEN DEL DÍA", _tablas[3].strip(), "ORDEN DEL DÍA")
 test("acta: sin las bandas A)/B)/C) de la plantilla",
      any("PARTE RESOLUTIVA" in t or "ACTIVIDAD DE CONTROL" in t for t in _tablas), False)
@@ -632,29 +599,21 @@ test("acta: sin marcas de tiempo", "00:03:12" in "".join(_tablas), False)
 test("acta: fórmula de cierre presente", "no habiendo más asuntos que tratar" in _parrafos, True)
 test("acta: asistentes en el párrafo de apertura", "Lorena Luján Chujfi" in _parrafos, True)
 
-# Los "No hay asuntos" de los bloques B) y C) de la plantilla desaparecen con ellos: en
-# un acta lineal no hay sección que pueda quedarse vacía.
+# Sin esas bandas no queda ninguna sección vacía.
 _sin_ruegos = InformePleno.model_validate(dict(INFORME_MINIMO, ruegos_y_preguntas=[]))
 _tablas_sr, _ = _acta_generada(_sin_ruegos)
 test("acta: sin ruegos no quedan secciones huérfanas",
      any("No hay asuntos" in t for t in _tablas_sr), False)
 test("acta: la plantilla queda en cinco tablas", len(_tablas_sr), 5)
 
-# Decisión deliberada de la spec: si la grabación no identifica quién preside,
-# la celda "Presidida por" conserva el nombre de la plantilla del Ayuntamiento
-# (LORENA LUJÁN CHUJFI) en vez de vaciarse a HUECO. No es un descuido: la
-# plantilla es la oficial del Ayuntamiento y la secretaria revisa y corrige el
-# borrador a mano antes de sellarlo, así que dejar el valor de la plantilla es
-# más seguro que forzar un hueco que igualmente habría que rellenar a mano.
+# Decisión de la spec: sin presidente identificado, "Presidida por" conserva el nombre de la plantilla
+# (la secretaria revisa el borrador a mano antes de sellarlo).
 _sin_presidente = InformePleno.model_validate(dict(INFORME_MINIMO, presidente=None))
 _tablas_sp, _ = _acta_generada(_sin_presidente)
 test("acta: sin presidente en la grabación conserva el de la plantilla",
      "LORENA LUJÁN CHUJFI" in _tablas_sp[2], True)
 
-# Y la fórmula de cierre, por el mismo motivo, nombra a quien preside desde PRESIDENCIA en
-# vez de dejar un hueco. Antes era `or HUECO` y el modelo colaba ahí su fórmula de escape:
-# el acta del 2026-09-03 cerró con "...el objeto del acto, no identificado en la grabación
-# levanta la sesión...".
+# La fórmula de cierre nombra a quien preside desde PRESIDENCIA en vez de dejar un hueco.
 _cierre_sp = formula_cierre(_sin_presidente)
 test("acta: el cierre nombra a quien preside aunque la grabación no lo diga",
      PRESIDENCIA["tratamiento"] in _cierre_sp, True)
@@ -687,9 +646,7 @@ print("── forma del acta (comillas, negrita, alineación, sangría) ──�
 
 from plenos_acta import SANGRIA, comillas
 
-# El criterio tipográfico es el del acta oficial ("...denominado “LOSILLA...”") y se
-# garantiza aquí, no pidiéndoselo al modelo: llegó a escribir el mismo paraje con
-# comillas dobles en `texto` y simples en `acuerdo` del mismo punto.
+# Comillas unificadas en código, no pidiéndoselo al modelo (mezclaba tipos en un mismo punto).
 test("comillas: las dobles rectas se vuelven tipográficas",
      comillas('la zona conocida como "la playeta".'), "la zona conocida como “la playeta”.")
 test("comillas: las simples también",
@@ -717,13 +674,11 @@ _ps = _parrafos_orden(informe)
 _encabezados = [p for p in _ps if p.text.startswith(("1º)", "2º)", "RUEGOS"))]
 _cuerpo = [p for p in _ps if p not in _encabezados and p.text.strip()]
 
-# La plantilla trae su párrafo de ejemplo centrado y, al reutilizarlo como modelo, el
-# primer punto del orden del día salía centrado hasta el primer punto y aparte.
+# La plantilla trae el párrafo de ejemplo centrado; no debe contagiar al primer punto.
 test("acta: ningún párrafo del orden del día queda centrado",
      any(p.paragraph_format.alignment is not None for p in _ps), False)
 
-# El título del punto va en negrita y en su propio párrafo; el cuerpo empieza en el
-# renglón siguiente ("2º) APROBACIÓN...2026." / "Dada cuenta por el Sr. Alcalde...").
+# Título del punto en negrita y en su propio párrafo; el cuerpo, en el siguiente.
 _p1 = _ps[0]
 test("acta: el encabezado del punto va en negrita", _p1.runs[0].bold, True)
 test("acta: el encabezado es solo el título",
@@ -737,8 +692,7 @@ test("acta: los encabezados no llevan sangría",
 test("acta: todo párrafo de cuerpo lleva sangría",
      {p.paragraph_format.first_line_indent for p in _cuerpo}, {SANGRIA})
 
-# Si hay ruegos, la sección se anuncia como un punto más del orden del día. Sin numerar:
-# el número que le dé la convocatoria no lo sabe el render, e inventarlo sería un dato.
+# Los ruegos se anuncian como punto más, sin numerar (el render no conoce el número de la convocatoria).
 _ruegos = [p for p in _ps if p.text == "RUEGOS Y PREGUNTAS"]
 test("acta: RUEGOS Y PREGUNTAS aparece como encabezado", len(_ruegos), 1)
 test("acta: RUEGOS Y PREGUNTAS en negrita", _ruegos[0].runs[0].bold, True)
@@ -749,8 +703,7 @@ test("acta: RUEGOS Y PREGUNTAS antes de quién los formula",
 test("acta: sin ruegos no aparece el encabezado",
      any(p.text == "RUEGOS Y PREGUNTAS" for p in _parrafos_orden(_sin_ruegos)), False)
 
-# Si la convocatoria numera RUEGOS Y PREGUNTAS, el punto ya viene en el orden del día:
-# el encabezado suelto lo duplicaba en el acta.
+# Si la convocatoria ya numera RUEGOS Y PREGUNTAS, el encabezado suelto no se duplica.
 _con_punto_ruegos = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     orden_del_dia=INFORME_MINIMO["orden_del_dia"] + [
@@ -772,17 +725,14 @@ from procesar_pleno import leer_convocatoria
 test("convocatoria: sin ruta no hay convocatoria", leer_convocatoria(None), None)
 
 with tempfile.TemporaryDirectory() as _tmp:
-    # Se lee en BINARIO y sin extraer texto: las convocatorias del Ayuntamiento son
-    # escaneos (un JPEG dentro del PDF) y el PDF entero viaja a Gemini tal cual.
+    # Binario y sin extraer texto: son escaneos y el PDF viaja entero a Gemini.
     _pdf = os.path.join(_tmp, "convocatoria.pdf")
     with open(_pdf, "wb") as _f:
         _f.write(b"%PDF-1.4 fake")
     test("convocatoria: se lee en bytes, sin extraer texto",
          leer_convocatoria(_pdf), b"%PDF-1.4 fake")
 
-    # Las convocatorias del Ayuntamiento llegan a menudo como foto o escaneo suelto
-    # en JPEG, no ya metidas en un PDF: se envuelven en uno aquí mismo para que el
-    # resto del pipeline (y lo que se guarda en el borrador) siga viendo un PDF.
+    # Un JPEG suelto se envuelve en un PDF para que el resto del pipeline vea siempre un PDF.
     from PIL import Image
     _jpg = os.path.join(_tmp, "convocatoria.jpg")
     Image.new("RGB", (4, 4), color="white").save(_jpg, format="JPEG")
@@ -807,22 +757,21 @@ with tempfile.TemporaryDirectory() as _tmp:
         _falta = "no existe"
     test("convocatoria: ruta inexistente avisa", _falta, "no existe")
 
-# El auditor tiene que recibir la convocatoria igual que el generador: sin ella
-# marcaría cada título del orden del día como afirmación no respaldada (Whisper
-# destroza los nombres) y quemaría las tres vueltas sin arreglar nada.
+# El auditor recibe la convocatoria como el generador; si no, marcaría los títulos como no respaldados.
 _recibida = {"generar": None, "auditar": None, "corregir": None}
 _CONV = b"%PDF-convocatoria"
 
 import plenos_informe as _pi
 
 _reales = (_pi.generar_informe, _pi.auditar_informe, _pi.corregir_informe)
+_atrib_real2 = _pi.auditar_atribuciones
+_pi.auditar_atribuciones = lambda t, i, c=None, **k: AuditoriaInforme(problemas=[])
 try:
     def _gen_espia(t, convocatoria=None):
         _recibida["generar"] = convocatoria
         return _informe_v1
     def _aud_espia(t, i, convocatoria=None, rutas_tocadas=None):
-        # Este espía sustituye a la función real del módulo, así que sigue SU firma
-        # (a diferencia de los fakes inyectados por kwargs, que son (t, informe)).
+        # El espía sustituye a la función real del módulo, así que sigue su firma.
         _recibida["auditar"] = convocatoria
         return AuditoriaInforme(problemas=[])
     def _cor_espia(t, i, p, convocatoria=None):
@@ -830,19 +779,18 @@ try:
         return i
     _pi.generar_informe, _pi.auditar_informe, _pi.corregir_informe = (
         _gen_espia, _aud_espia, _cor_espia)
-    # Sin kwargs inyectados, el bucle toma la ruta real y narra su progreso; aquí
-    # solo interesa qué recibe cada rol, así que su salida se descarta.
+    # Sin kwargs inyectados el bucle narra su progreso; aquí se descarta.
     import contextlib, io as _io
     with contextlib.redirect_stdout(_io.StringIO()):
         _pi.bucle_informe("transcripción", _CONV)
 finally:
     _pi.generar_informe, _pi.auditar_informe, _pi.corregir_informe = _reales
+    _pi.auditar_atribuciones = _atrib_real2
 
 test("convocatoria: la recibe el generador", _recibida["generar"], _CONV)
 test("convocatoria: la recibe el AUDITOR", _recibida["auditar"], _CONV)
 
-# Los fakes inyectados por los tests conservan su firma de siempre: el bucle no les
-# pasa la convocatoria, así que añadirla no obliga a tocar los tests del bucle.
+# Los fakes inyectados conservan su firma: el bucle no les pasa la convocatoria.
 _arity = {"ok": False}
 def _gen_viejo(t):
     _arity["ok"] = True
@@ -863,8 +811,7 @@ import procesar_pleno as _pp
 
 
 class _RequestsFalso:
-    """Sustituye a requests: registra lo que se le pide y devuelve la secuencia
-    upload → submit → processing → completed."""
+    """Sustituye a requests: upload → submit → processing → completed."""
     def __init__(self):
         self.cuerpo = None
         self.sondeos = 0
@@ -907,11 +854,7 @@ test("assemblyai: modelo universal-3.5-pro", _falso.cuerpo["speech_models"], ["u
 test("assemblyai: español fijo, sin detección", _falso.cuerpo["language_code"], "es")
 test("assemblyai: diarización activada", _falso.cuerpo["speaker_labels"], True)
 # min/max van DENTRO de speaker_options; sueltos la API los ignora.
-# El rango 4-15 (no 6-10) es a propósito: partir a una persona en dos etiquetas es
-# recuperable (queda "no identificada"), pero fundir a dos personas en una no lo es —
-# es justo lo que pasó el 3 de septiembre de 2026 (ver el comentario en
-# transcribir_assemblyai). El máximo va holgado para que el sistema jamás necesite
-# fundir dos voces por falta de margen.
+# Rango 4-15 a propósito: partir a una persona en dos etiquetas es recuperable; fundir a dos, no.
 test("assemblyai: rango de locutores anidado en speaker_options",
      _falso.cuerpo["speaker_options"], {"min_speakers_expected": 6, "max_speakers_expected": 15})
 test("assemblyai: la corporación viaja en keyterms",
@@ -926,8 +869,7 @@ import requests as _requests_real
 
 
 class _RequestsSubidaFalla:
-    """Primer intento: la conexión se corta a mitad de la subida. Segundo
-    intento: sube bien. Registra cuántas veces se abrió el fichero."""
+    """Primer intento: la conexión se corta a mitad de subida. Segundo: sube bien."""
     RequestException = _requests_real.RequestException
 
     def __init__(self, fallos: int = 1):
@@ -941,8 +883,7 @@ class _RequestsSubidaFalla:
 
     def post(self, url, **kw):
         self.intentos += 1
-        # El cuerpo (data=f) debe consumirse para que el test represente de verdad
-        # una subida que se corta a mitad de la transferencia, no antes de empezar.
+        # Se consume el cuerpo para simular un corte a mitad de la transferencia.
         kw["data"].read()
         if self.intentos <= self.fallos:
             raise _requests_real.exceptions.ConnectionError("EOF occurred in violation of protocol")
@@ -1021,7 +962,6 @@ finally:
     else:
         os.environ["ASSEMBLYAI_API_KEY"] = _env_previo
 
-# Sin clave, sí usa el camino de Groq.
 _env_previo2 = os.environ.pop("ASSEMBLYAI_API_KEY", None)
 _trocear_llamado2 = {"si": False}
 
@@ -1074,8 +1014,7 @@ test("strict: sin `default` tampoco en identificacion_locutores",
 # ── la transcripción sobrevive al fallo del LLM ───────────────────────────────
 print("── la transcripción sobrevive al fallo del LLM ──────────────────────")
 
-# Costó 0,48 $ y no se puede repetir gratis: si el bucle LLM revienta, el .md tiene
-# que estar ya en disco para que --rehacer-informe lo reutilice.
+# Si el bucle LLM revienta, la transcripción (cara de repetir) ya debe estar en disco.
 import plenos_informe as _pi_rescate
 from pathlib import Path as _Path_rescate
 
@@ -1112,8 +1051,7 @@ with tempfile.TemporaryDirectory() as _tmp_r:
 # ── respuesta de OpenRouter sin contenido ─────────────────────────────────────
 print("── respuesta de OpenRouter sin contenido ────────────────────────────")
 
-# El fallo real del 2026-08-22: el auditor devolvió content=None y el None viajaba
-# hasta pydantic, que reventaba con un error de tipos mudo sobre la causa.
+# content=None llegaba hasta pydantic con un error mudo sobre la causa.
 _peticion0 = _pi_rescate._peticion
 _pi_rescate._peticion = lambda cuerpo, intentos=4: {
     "choices": [{"message": {"content": None}, "finish_reason": "length",
@@ -1139,11 +1077,8 @@ finally:
 # ── el proveedor corta la respuesta (HTTP 200 con error dentro) ───────────────
 print("── el proveedor corta la respuesta ──────────────────────────────────")
 
-# El fallo real del 2026-08-22: el auditor se atascó razonando, Google dejó de emitir
-# y OpenRouter devolvió 200 con {"error": {"code": 504, ...}} dentro del choice. Sin
-# reintento, eso tiraba tres vueltas de corrector ya pagadas.
-# Ahora la petición va en streaming, así que el falso devuelve líneas SSE, que es lo que
-# _peticion consume de verdad.
+# OpenRouter devuelve 200 con {"error": ...} dentro del choice; debe reintentarse.
+# La petición va en streaming, así que el falso devuelve líneas SSE.
 _corte = ['data: {"choices":[{"finish_reason":"error","delta":{},'
           '"error":{"code":504,"message":"Upstream idle timeout exceeded"}}]}']
 _buena = ['data: {"choices":[{"finish_reason":"stop",'
@@ -1180,7 +1115,6 @@ try:
 finally:
     _pi_rescate.requests.post, _pi_rescate.time.sleep = _post0, _sleep0
 
-# Agotados los intentos, el corte se convierte en el error legible de siempre.
 _llamadas_todas = {"n": 0}
 def _post_siempre_roto(url, headers=None, json=None, timeout=None, stream=None):
     _llamadas_todas["n"] += 1
@@ -1205,9 +1139,7 @@ finally:
 # ── el corrector no rellena recuentos ────────────────────────────────────────
 print("── el corrector no rellena recuentos ────────────────────────────────")
 
-# El bucle del 2026-08-22 quemó sus tres vueltas en el punto 5: el auditor rechazaba
-# el recuento ("la frase es ininteligible") y el corrector respondía cambiando 5 por 4
-# en vez de poner null. La regla que lo prohíbe tiene que seguir en el prompt.
+# El corrector cambiaba 5 por 4 en vez de poner null; la regla debe seguir en el prompt.
 _pc = _pi_rescate.PROMPT_CORRECTOR
 test("corrector: la regla de recuentos está en el prompt",
      "RECUENTOS DE VOTOS" in _pc, True)
@@ -1218,8 +1150,7 @@ test("corrector: prohíbe deducir restando de los asistentes",
 test("corrector: prohíbe el 0 de relleno",
      "va a `null`, nunca a 0" in _pc, True)
 
-# La regla vive en un bloque compartido: el generador la necesita porque el `0` inventado
-# que la incumplía lo escribió él, no el corrector.
+# Bloque compartido: el `0` inventado lo escribía el generador, no el corrector.
 _pg = _pi_rescate.PROMPT_GENERADOR
 test("generador: recibe también la regla de recuentos",
      "RECUENTOS DE VOTOS" in _pg, True)
@@ -1236,11 +1167,7 @@ test("corporación: avisa de que hay dos Martínez",
 test("corporación: el aviso llega también al auditor",
      "son DOS personas distintas que comparten apellido" in _pi_rescate.PROMPT_AUDITOR, True)
 
-# Fallo real del pleno del 3 de septiembre de 2026: el acta atribuyó a la Teniente de
-# Alcalde unos ruegos que había formulado la presidenta de la Asociación de Jubilados,
-# una vecina asistente, porque la etiqueta de locutor fusionó a las dos. CORPORACION
-# tiene que dejar claro que el público existe, que no está en ningún listado y cómo se
-# le nombra en el acta.
+# CORPORACION debe dejar claro que el público existe, que no está en ningún listado y cómo se le nombra.
 _corp = _pi_rescate.CORPORACION
 test("corporación: avisa de que asiste público y algunos vecinos intervienen",
      "PÚBLICO ASISTENTE" in _corp, True)
@@ -1266,9 +1193,7 @@ test("corrector: sus reglas siguen numeradas sin saltos",
 # ── "sin votación" como cadena en lugar del objeto ───────────────────────────
 print("── \"sin votación\" como cadena ─────────────────────────────────────")
 
-# Fallo real del 2026-08-23: el generador puso la cadena "sin votación" en `votacion`,
-# que es objeto o null. Hay dos vías de escape parecidas y las confundió; la intención
-# es inequívoca, así que se normaliza en vez de tirar la generación entera.
+# El generador confundía dos vías de escape; la intención es inequívoca, así que se normaliza.
 from plenos_informe import PuntoOrdenDia as _POD
 _base = {"numero": 2, "parte": "control", "titulo": "X", "texto": "y"}
 for _cadena in ("sin votación", "sin votacion", "no consta", "", "  SIN VOTACIÓN  "):
@@ -1280,8 +1205,7 @@ _obj = _POD.model_validate(dict(_base, votacion={"resultado": "aprobado",
                                                  "modalidad": "unanimidad"}))
 test("el objeto de votación sigue validándose", _obj.votacion.resultado, "aprobado")
 
-# Una cadena que NO significa ausencia debe seguir fallando: normalizarla a null diría
-# que no hubo votación cuando sí la hubo.
+# Una cadena que no significa ausencia debe seguir fallando.
 _fallo = False
 try:
     _POD.model_validate(dict(_base, votacion="aprobado por unanimidad"))
@@ -1294,9 +1218,7 @@ test("el prompt explica que `votacion` es objeto o null, nunca cadena",
 
 
 # ── reensamblado del stream SSE ───────────────────────────────────────────────
-# El streaming existe para que el proveedor no corte la petición por ociosa mientras
-# gemini-2.5-pro razona (504 "Upstream idle timeout exceeded"). Lo que hay que fijar es
-# que reensamblar los trozos devuelva exactamente la forma que espera _llamar_llm.
+# El streaming evita el 504 por ociosidad; el reensamblado debe dar la forma que espera _llamar_llm.
 _sse = _pi_rescate._reensamblar_sse
 _ok = _sse([
     ': OPENROUTER PROCESSING',
@@ -1312,8 +1234,7 @@ test("el finish_reason se conserva", _ok["choices"][0]["finish_reason"], "stop")
 test("el usage del último trozo se conserva", _ok["usage"]["prompt_tokens"], 7)
 test("un stream limpio no lleva error", "error" in _ok["choices"][0], False)
 
-# El corte del proveedor llega como un trozo más, con el error dentro del choice: si no
-# se propaga, _peticion no lo reintentaría y el JSON truncado llegaría a pydantic.
+# El corte llega como un trozo con el error en el choice; debe propagarse para poder reintentar.
 _roto = _sse([
     'data: {"choices":[{"delta":{"content":"{\\"a\\":"}}]}',
     'data: {"choices":[{"error":{"code":504,"message":"Upstream idle timeout exceeded"}}]}',
@@ -1327,11 +1248,7 @@ test("el auditor también recibe el bloque de RECUENTOS",
 # ── mapa de voces: reglas del bloque DIARIZACION y revisión del auditor ───────
 print("── mapa de voces (DIARIZACION + auditor) ─────────────────────────────")
 
-# Fallo real del pleno del 3 de septiembre de 2026: la Presidencia dio la palabra a
-# "Joaquín" y el modelo atribuyó la intervención siguiente a Joaquín Martínez Luján,
-# cuando en realidad habló Mª Rosario Cerdán Pérez — y esa misma voz, minutos después,
-# le decía "esto ocurrió, Joaquín", lo que la excluye a ella de ser él. Las dos reglas
-# que lo habrían evitado tienen que estar en DIARIZACION, y llegar a los tres roles.
+# DIARIZACION debe llevar las reglas de "da la palabra a X" y de la voz que excluye a una persona, y llegar a los tres roles.
 _diar = _pi_rescate.DIARIZACION
 test("diarización: dar la palabra por su nombre NO identifica a quien habla después",
      "no identifica la voz que\n  habla a continuación" in _diar, True)
@@ -1342,8 +1259,7 @@ test("diarización: la evidencia tiene que ser cita literal, no un resumen",
 test("diarización: primero el mapa, después el acta",
      "PRIMERO EL MAPA, DESPUÉS EL ACTA" in _diar, True)
 
-# La regla de voces mezcladas: causa raíz real del fallo del 3 de septiembre de 2026
-# (ver DIARIZACION y CORPORACION en plenos_informe.py y el informe al equipo).
+# Regla de voces mezcladas (DIARIZACION y CORPORACION).
 test("diarización: avisa de que una etiqueta puede fusionar a dos personas",
      "haya fusionado dos voces parecidas bajo una sola etiqueta" in _diar, True)
 test("diarización: la señal es que la etiqueta afirme identidades incompatibles",
@@ -1358,16 +1274,12 @@ test("diarización: una identificación propia manda sobre la etiqueta contamina
      "una intervención que se identifica a sí misma manda sobre lo que diga su\n  etiqueta"
      in _diar, True)
 
-# DIARIZACION es un bloque compartido: si estas reglas solo llegaran al generador, el
-# auditor seguiría sin poder objetar una identificación mal hecha por el mismo motivo
-# de siempre (ver CORPORACION, la convocatoria): una fuente que ve un rol y no otro.
+# DIARIZACION es un bloque compartido: el auditor debe verlo para poder objetar.
 test("diarización: llega al generador", _diar in _pi_rescate.PROMPT_GENERADOR, True)
 test("diarización: llega al auditor", _diar in _pi_rescate.PROMPT_AUDITOR, True)
 test("diarización: llega al corrector", _diar in _pi_rescate.PROMPT_CORRECTOR, True)
 
-# El auditor tiene que revisar el mapa como tal, no solo las atribuciones sueltas del
-# acta: es lo que habría hecho saltar el fallo del 3 de septiembre, revisando ocho
-# entradas en vez de cuarenta atribuciones repartidas por el documento.
+# El auditor revisa el mapa de voces como tal, no solo las atribuciones sueltas.
 _pa = _pi_rescate.PROMPT_AUDITOR
 test("auditor: instrucción explícita de revisar identificacion_locutores",
      "identificacion_locutores" in _pa, True)
@@ -1376,9 +1288,7 @@ test("auditor: comprueba que la evidencia del mapa exista y lo sostenga",
 test("auditor: objeta atribuciones que no estén respaldadas por el mapa",
      "cuya etiqueta\nno esté identificada en el mapa" in _pa, True)
 
-# El auditor tiene que buscar ACTIVAMENTE el patrón de la etiqueta contaminada: es el
-# fallo que el generador no puede ver mientras redacta punto a punto, y que sí se puede
-# detectar leyendo la transcripción entera de una etiqueta.
+# El auditor busca activamente la etiqueta contaminada, que el generador no ve al redactar.
 test("auditor: instrucción explícita de buscar etiquetas contaminadas",
      "BUSCA ACTIVAMENTE LAS ETIQUETAS CONTAMINADAS" in _pa, True)
 test("auditor: se le pide leer todas las intervenciones de cada etiqueta, no solo la citada",
@@ -1391,10 +1301,7 @@ test("auditor: objeta el patrón aunque la cita del mapa sea literal",
 # ── mapa de voces: los dos huecos nuevos (turnos alternos + jerarquía de pruebas) ─
 print("── mapa de voces: turnos alternos y jerarquía de pruebas ─────────────")
 
-# Hueco 1: el modelo sabía detectar UNA etiqueta que dice ser DOS personas, pero no
-# DOS etiquetas que dicen ser la MISMA. Validado contra el pleno del 2026-09-03: sus
-# seis etiquetas se alternaban entre sí (las 15 combinaciones posibles) cientos de
-# veces en menos de 60 segundos, es decir, son demostrablemente seis personas distintas.
+# Hueco 1: dos etiquetas que dicen ser la MISMA persona pese a alternarse entre sí.
 test("diarización: regla de turnos alternos explícita",
      "REGLA DE TURNOS ALTERNOS" in _diar, True)
 test("diarización: dos etiquetas que se alternan son personas distintas",
@@ -1407,9 +1314,7 @@ test("diarización: matiz — si nunca se alternan, sí pueden ser la misma pers
      "si dos etiquetas\n  NUNCA se alternan entre sí, sí pueden ser la misma persona partida"
      in _diar, True)
 
-# Hueco 2: gana la primera identificación aunque llegue una prueba mejor después. La
-# jerarquía de pruebas fija qué pesa más y dice qué hacer cuando una prueba fuerte
-# contradice a una débil que ya estaba anotada.
+# Hueco 2: la jerarquía de pruebas decide cuándo una prueba fuerte desplaza a una débil ya anotada.
 test("diarización: jerarquía de pruebas explícita", "JERARQUÍA DE PRUEBAS" in _diar, True)
 test("diarización: autoidentificación es la prueba más fuerte",
      "SE IDENTIFICA A SÍ MISMA" in _diar, True)
@@ -1420,9 +1325,7 @@ test("diarización: dirigirse a ella por nombre o cargo es la tercera",
 test("diarización: gana la prueba fuerte, no la que llegó primero",
      "gana la prueba fuerte, NO\n  la que llegó primero" in _diar, True)
 
-# Las dos reglas nuevas siguen llegando a los tres roles: es el mismo bloque DIARIZACION
-# de siempre, así que basta con que sigan dentro de `_diar` (ya comprobado arriba que
-# `_diar` completo llega a los tres prompts).
+# Las reglas nuevas siguen llegando a los tres roles vía `_diar`.
 test("diarización: turnos alternos llega a los tres roles (vía DIARIZACION completo)",
      ("REGLA DE TURNOS ALTERNOS" in _pg, "REGLA DE TURNOS ALTERNOS" in _pa,
       "REGLA DE TURNOS ALTERNOS" in _pi_rescate.PROMPT_CORRECTOR),
@@ -1449,8 +1352,7 @@ from pathlib import Path
 print()
 print("── adaptaciones para el asistente ────────────────────────────────────")
 
-# La carpeta de actas tiene que poder vivir fuera del repo: en el PC del
-# Ayuntamiento no hay repo, solo la carpeta junto al ejecutable.
+# La carpeta de actas puede vivir fuera del repo (en el PC del Ayuntamiento no hay repo).
 _bd_previo = _pp.BORRADOR_DIR
 _actas_previo = os.environ.pop("ACTAS_DIR", None)
 try:
@@ -1475,9 +1377,7 @@ try:
     test("con YT_DLP_EXE se usa el binario incluido",
          _pp._comando_yt_dlp(), [r"C:\Actas\yt-dlp.exe"])
 
-    # Congelado (empaquetado) y sin YT_DLP_EXE: el binario se ha perdido (antivirus,
-    # borrado). Relanzar `sys.executable -m yt_dlp` relanzaría el propio asistente
-    # con una ventana muerta, así que tiene que avisar en vez de colgarse.
+    # Congelado y sin YT_DLP_EXE: debe avisar, no relanzar el propio asistente.
     os.environ.pop("YT_DLP_EXE", None)
     _frozen_previo = getattr(sys, "frozen", None)
     sys.frozen = True
@@ -1514,9 +1414,7 @@ import asistente_plenos as _ap
 _tmp_inst = Path(tempfile.mkdtemp())
 (_tmp_inst / "config").mkdir()
 
-# Bloques anteriores de este mismo fichero ya dejan las dos claves en el entorno
-# (línea 886 ASSEMBLYAI_API_KEY, línea 1021 OPENROUTER_API_KEY), así que hay que
-# quitarlas para comprobar la detección y devolverlas al terminar.
+# Bloques anteriores dejan las claves en el entorno; se quitan para probar la detección y se devuelven al final.
 _claves_previas = {c: os.environ.pop(c, None) for c in _ap.CLAVES_NECESARIAS}
 try:
     test("sin claves en el entorno, se listan las que faltan",
@@ -1540,10 +1438,7 @@ _nombre = _ap.nuevo_log(_tmp_inst, "2026-09-02").name
 test("el nombre del registro lleva la fecha del pleno",
      _nombre.endswith("_pleno-2026-09-02.log"), True)
 
-# El Bloc de notas de Windows guarda con BOM, y así es exactamente como se va a
-# editar este fichero en el Ayuntamiento cuando lleguen las claves reales. Sin
-# encoding="utf-8-sig" en cargar_configuracion, el BOM se pega a la primera clave
-# del fichero y esa clave se pierde en silencio.
+# El Bloc de notas guarda con BOM; sin utf-8-sig la primera clave del fichero se pierde en silencio.
 _tmp_bom = Path(tempfile.mkdtemp())
 (_tmp_bom / "config").mkdir()
 _claves_previas_bom = {c: os.environ.pop(c, None) for c in _ap.CLAVES_NECESARIAS}
@@ -1607,10 +1502,7 @@ test("la pantalla solo recibe la traducida",
 test("la consola dice que no es una terminal (el pipeline no debe pintar colores ANSI)",
      _consola.isatty(), False)
 
-# Este es el test que habría cazado el fallo de isatty en producción: no prueba una
-# pieza aislada, sino el camino real — un banner de verdad, sobre una Consola de
-# verdad, dentro de ejecutar_pipeline. El banner final de procesar_pleno revienta si
-# Consola no cumple el contrato de fichero de texto que el pipeline da por hecho.
+# Camino real: banner y Consola de verdad dentro de ejecutar_pipeline (habría cazado el fallo de isatty).
 _tmp_banner_log = Path(tempfile.mkdtemp()) / "banner.log"
 _consola_banner = _ap.Consola(_tmp_banner_log, _Pantalla())
 _excepcion_banner = None
@@ -1626,9 +1518,7 @@ test("el banner final no revienta con una Consola de verdad",
 test("el banner queda en el registro",
      "prueba de banner" in _tmp_banner_log.read_text(encoding="utf-8"), True)
 
-# .upper() no basta para casar "EEME" con una É ya mayúscula: sin normalizar la
-# tilde, mostrar_instrucciones nunca encontraba el LÉEME real y siempre caía al de
-# repuesto empaquetado dentro del .exe.
+# Sin normalizar la tilde, mostrar_instrucciones caía siempre al LÉEME de repuesto.
 _tmp_leeme_dir = Path(tempfile.mkdtemp())
 (_tmp_leeme_dir / "LÉEME - Cómo generar un acta.txt").write_text(
     "CONTENIDO DE PRUEBA DEL LEEME REAL", encoding="utf-8")
@@ -1653,8 +1543,7 @@ test("una ruta sin comillas se queda igual",
      _ap.limpiar_ruta("C:\\Actas\\pleno.mp4"), "C:\\Actas\\pleno.mp4")
 test("una respuesta vacía sigue vacía", _ap.limpiar_ruta("   "), "")
 
-# La fecha se le devuelve en palabras para que un 02/09 escrito como 09/02 no se
-# cuele hasta el encabezado de un documento que se sella.
+# La fecha se devuelve en palabras para que 02/09 no se confunda con 09/02.
 test("la fecha se dice en palabras",
      _ap.fecha_en_palabras("2026-09-02"), "2 de septiembre de 2026")
 test("y con el mes correcto en enero",
@@ -1665,9 +1554,7 @@ test("y con el mes correcto en enero",
 print()
 print("── asistente: pantalla final ─────────────────────────────────────────")
 
-# texto_comprobaciones y escribir_comprobaciones viven en plenos_guia.py, no en
-# asistente_plenos.py: las usa también procesar_pleno (--rehacer-acta) sin pasar
-# por el asistente.
+# texto_comprobaciones y escribir_comprobaciones viven en plenos_guia.py (también las usa --rehacer-acta).
 from plenos_guia import texto_comprobaciones, escribir_comprobaciones
 
 # `Problema` exige también `evidencia`: los cuatro campos son obligatorios.
@@ -1676,8 +1563,7 @@ _pendientes = [Problema(seccion="Punto 3 — el resultado",
                         motivo="nadie declara el resultado en la grabación",
                         evidencia="[01:12:04] Pues bueno, votos a favor.")]
 
-# Formato antiguo: solo `Problema`, sin objeciones traducidas (compatibilidad con
-# un pleno regenerado con datos de antes de que existiera la guía).
+# Formato antiguo: solo `Problema`, sin objeciones traducidas (compatibilidad).
 _aviso = texto_comprobaciones("2026-07-07", _pendientes)
 test("el aviso lleva la fecha en palabras", "7 de julio de 2026" in _aviso, True)
 test("el aviso recoge la frase dudosa", "queda aprobado" in _aviso, True)
@@ -1747,8 +1633,7 @@ print("── asistente: anuncio de la guía en la pantalla final ────�
 
 
 class _ResultadoFalso:
-    """Un ResultadoPleno de mentira, para probar pantalla_final sin correr el
-    pipeline entero: solo hacen falta los campos que esa función lee."""
+    """ResultadoPleno de mentira, solo con los campos que lee pantalla_final."""
     def __init__(self, ruta_acta, pendientes, ruta_guia, objeciones=()):
         self.carpeta = Path(tempfile.mkdtemp())
         self.ruta_acta = ruta_acta
@@ -1758,8 +1643,7 @@ class _ResultadoFalso:
 
 
 def _pantalla_final_texto(resultado) -> str:
-    """Ejecuta pantalla_final sobre una consola de prueba y devuelve todo lo que
-    habría visto la funcionaria."""
+    """Ejecuta pantalla_final sobre una consola de prueba y devuelve lo que vería la funcionaria."""
     _log = Path(tempfile.mkdtemp()) / "prueba.log"
     _pant = _Pantalla()
     _cons = _ap.Consola(_log, _pant)
@@ -1772,9 +1656,7 @@ _falso_acta.write_bytes(b"")
 _falso_guia = Path(tempfile.mkdtemp()) / "2026-07-07-guia-de-verificacion.html"
 _falso_guia.write_text("<html></html>", encoding="utf-8")
 
-# pantalla_final abre la carpeta del pleno de verdad (os.startfile): en la máquina
-# de pruebas eso abriría una ventana del Explorador por cada caso de aquí abajo.
-# Se sustituye por un no-op mientras dura este bloque y se restaura al terminar.
+# pantalla_final abre el Explorador (os.startfile): se sustituye por un no-op durante este bloque.
 _startfile_real = getattr(os, "startfile", None)
 os.startfile = lambda *_a, **_kw: None
 try:
@@ -1790,7 +1672,6 @@ try:
     test("sin ruta_guia (no se pudo componer), la pantalla final no la menciona",
          "guía de verificación" in _texto_sin_guia, False)
 
-    # También en el camino con objeciones pendientes: los dos finales con acta.
     _texto_con_objeciones_y_guia = _pantalla_final_texto(
         _ResultadoFalso(_falso_acta, _pendientes, _falso_guia, _objeciones_completas))
     test("con objeciones y guía, también se menciona la guía",
@@ -1939,11 +1820,8 @@ test("objeción: una sección que no casa con ningún punto se deja tal cual",
                       _informe_guia, _TRANS_GUIA, None)["donde"],
      "algo raro sin numero ni titulo")
 
-# ── rutas internas del auditor traducidas a lenguaje del acta (caso real 2026-09-03) ──
-# El auditor no siempre escribe la sección en prosa: a veces devuelve la ruta interna
-# del JSON tal cual ('orden_del_dia[2].texto'), que para la funcionaria no significa
-# nada. Fixture con la forma real del pleno de 2026-09-03: 5 puntos del orden del día
-# (índice 2 -> punto 3, índice 4 -> punto 5) y un turno de ruegos de 3 intervenciones.
+# El auditor a veces cita la ruta interna del JSON ('orden_del_dia[2].texto').
+# Fixture: 5 puntos (índice 2 -> punto 3, índice 4 -> punto 5) y un turno de ruegos de 3 intervenciones.
 _informe_rutas = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     orden_del_dia=[
@@ -2046,8 +1924,7 @@ print("── buscar_en_acta: la frase literal para el buscador de Word ──�
 
 from plenos_guia import buscar_en_acta
 
-# Caso real (2026-09-03, aviso 1): el auditor cita entre comillas, dentro de
-# `afirmacion_dudosa`, un fragmento que aparece tal cual en el campo del informe.
+# El auditor cita entre comillas, en `afirmacion_dudosa`, un fragmento literal del campo del informe.
 _informe_buscar = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     orden_del_dia=[
@@ -2086,9 +1963,7 @@ test("buscar_en_acta: el fragmento entrecomillado que sí está en el informe",
          _informe_buscar),
      "un interviniente no identificado en la grabación")
 
-# 2) Sin comillas: la frase que más comparte con la duda, por PROPORCIÓN de palabras
-# compartidas y no por recuento bruto -- si no, ganaría la frase que solo comparte el
-# nombre del concejal por casualidad, en vez de la que trata lo mismo que la duda.
+# 2) Sin comillas: la frase con mayor PROPORCIÓN de palabras compartidas, no por recuento bruto.
 test("buscar_en_acta: sin comillas, la frase que mejor casa (por proporción, no por "
      "recuento bruto)",
      buscar_en_acta(
@@ -2100,9 +1975,7 @@ test("buscar_en_acta: sin comillas, la frase que mejor casa (por proporción, no
          _informe_buscar),
      "Se abre el debate sobre qué camino incluir en la solicitud.")
 
-# 3) ruegos_y_preguntas[N] es un objeto (formulados_por + puntos), no una cadena: cuando
-# la duda es sobre QUIÉN habla, gana `formulados_por` porque comparte proporcionalmente
-# más palabras con la duda que cualquiera de los puntos.
+# 3) ruegos_y_preguntas[N] es un objeto: si la duda es sobre QUIÉN habla, gana `formulados_por`.
 test("buscar_en_acta: en un bloque de ruegos, 'formulados_por' cuando la duda es sobre "
      "quién habla",
      buscar_en_acta(
@@ -2184,9 +2057,7 @@ test("render_guia: sin vídeo, el tiempo se muestra en texto", "Minuto" in _html
 test("render_guia: sin objeciones no aparece la sección destacada",
      "Puntos que conviene comprobar" in _html_guia2, False)
 
-# El mapa de voces (identificacion_locutores) tiene que aparecer ANTES que las
-# comprobaciones del auditor: si una voz está mal identificada, todas sus
-# intervenciones están mal en el acta, así que es lo primero que hay que mirar.
+# El mapa de voces va ANTES de las comprobaciones: una voz mal identificada invalida sus intervenciones.
 _tmp_guia3 = os.path.join(tempfile.gettempdir(), "test_guia_mapa.html")
 render_guia(_informe_con_mapa, _entrada_guia, _TRANS_GUIA, [_prob_evidencia], _tmp_guia3)
 _html_guia3 = Path(_tmp_guia3).read_text(encoding="utf-8")
@@ -2204,16 +2075,11 @@ test("render_guia: el mapa aparece antes que las comprobaciones",
      _html_guia3.index("Quién es quién en la grabación")
      < _html_guia3.index("Puntos que conviene comprobar"), True)
 
-# La voz A de _informe_con_mapa es "no identificado en la grabación": tiene que llevar
-# el aviso de que conviene comprobarla en el vídeo, no quedarse muda como una entrada
-# más del mapa.
+# La voz A (no identificada) debe llevar el aviso de comprobarla en el vídeo.
 test("render_guia: una voz no identificada lleva su propio aviso",
      "no ha podido separar bien esta voz" in _html_guia3, True)
 
-# La etiqueta que antecede a la evidencia no puede ser la misma en los tres casos:
-# "Se identifica porque:" no tiene sentido delante de una voz sin identificar, y menos
-# delante de una que mezcla a dos personas. _html_guia3 trae las dos primeras a la vez
-# (voz A sin identificar, voz B identificada con normalidad).
+# La etiqueta de la evidencia varía: "Se identifica porque:" no vale para voces sin identificar o mezcladas.
 test("render_guia: voz identificada con normalidad lleva 'Se identifica porque:'",
      "Se identifica porque:" in _html_guia3, True)
 test("render_guia: voz sin identificar lleva su propia etiqueta, no 'Se identifica porque:'",
@@ -2221,17 +2087,12 @@ test("render_guia: voz sin identificar lleva su propia etiqueta, no 'Se identifi
 test("render_guia: voz sin identificar lleva la clase de aviso leve, no la de alerta fuerte",
      'class="voz voz-aviso-leve"' in _html_guia3, True)
 
-# Un pleno anterior sin mapa (identificacion_locutores == []) no debe mostrar la
-# sección: no hay nada que pintar, y no se inventa un mapa que el informe no trae.
+# Un pleno anterior sin mapa no muestra la sección ni inventa uno.
 test("render_guia: sin mapa, la sección no aparece",
      "Quién es quién en la grabación" in _html_guia, False)
 
 # ── mapa de voces: etiqueta con voces mezcladas (fallo real 2026-09-03) ───────
-# El fallo que motivó todo este cambio: AssemblyAI fusionó en la etiqueta B a quien
-# presidía y a la presidenta de la Asociación de Jubilados, una vecina asistente. El
-# informe corregido marca esa etiqueta como "etiqueta con voces mezcladas", y la guía
-# tiene que dejárselo clarísimo a la funcionaria: no es una voz cualquiera sin
-# identificar, es una etiqueta que mezcla a dos personas.
+# AssemblyAI fusionó en B a quien presidía y a una vecina; la guía debe dejar claro que es una etiqueta mezclada.
 _informe_con_mezcla = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     identificacion_locutores=[
@@ -2251,15 +2112,13 @@ test("render_guia: avisa de que el transcriptor ha mezclado a dos personas",
      "DOS PERSONAS DISTINTAS" in _html_guia4, True)
 test("render_guia: la voz mezclada lleva la clase de alerta",
      'class="voz voz-alerta"' in _html_guia4, True)
-# "Se identifica porque:" mentiría delante de una etiqueta contaminada: no se ha
-# identificado a nadie con seguridad, se ha detectado justo lo contrario.
+# "Se identifica porque:" mentiría delante de una etiqueta contaminada.
 test("render_guia: la voz mezclada lleva su propia etiqueta, no 'Se identifica porque:'",
      ("Aquí el transcriptor ha mezclado a dos personas:" in _html_guia4,
       "Se identifica porque:" in _html_guia4),
      (True, False))
 
-# Una voz identificada con normalidad NO lleva el aviso ni la clase de alerta: el aviso
-# es para lo dudoso (sin identificar o mezclada), no para todo el mapa por sistema.
+# Una voz identificada con normalidad no lleva aviso ni clase de alerta.
 _informe_voz_limpia = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     identificacion_locutores=[
@@ -2289,8 +2148,7 @@ print("── mapa de voces: conflicto de turnos alternos en la guía ───�
 
 from plenos_guia import _secuencia_etiquetas, _se_alternan, conflictos_turnos_alternos
 
-# _TRANS_GUIA es A, B, A, C: A y B se responden directamente (el trío A,B,A), C solo
-# interviene una vez y no se cruza con nadie.
+# _TRANS_GUIA es A, B, A, C: A y B se responden (trío A,B,A); C no se cruza con nadie.
 test("_secuencia_etiquetas: una entrada por turno, en orden",
      _secuencia_etiquetas(_TRANS_GUIA), ["A", "B", "A", "C"])
 test("_se_alternan: A y B se responden (trío A,B,A)",
@@ -2307,10 +2165,7 @@ test("_secuencia_etiquetas: colapsa las repeticiones consecutivas",
          "[00:00:08] Interviniente B: responde.\n"),
      ["A", "B"])
 
-# Hueco 1 del informe: dos etiquetas identificadas como la MISMA persona en el mapa,
-# pese a responderse directamente en la grabación — una de las dos identificaciones es
-# falsa (REGLA DE TURNOS ALTERNOS). conflictos_turnos_alternos lo detecta en Python
-# contra la transcripción entera, sin esperar a que el LLM aplicara bien su regla.
+# Hueco 1: dos etiquetas identificadas como la MISMA persona pese a responderse; se detecta en Python contra la transcripción.
 _informe_conflicto = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     identificacion_locutores=[
@@ -2324,9 +2179,7 @@ _informe_conflicto = InformePleno.model_validate(dict(
 test("conflictos_turnos_alternos: detecta las dos etiquetas que se alternan",
      conflictos_turnos_alternos(_informe_conflicto, _TRANS_GUIA), {"A", "B"})
 
-# Las voces de escape (mezclada / sin identificar) no afirman ser una persona concreta:
-# aunque compartan literalmente ese texto y se alternen, no hay conflicto de identidad
-# que señalar — ya llevan su propio aviso.
+# Las voces de escape no afirman ser una persona concreta: no hay conflicto de identidad que señalar.
 _informe_sin_conflicto = InformePleno.model_validate(dict(
     INFORME_MINIMO,
     identificacion_locutores=[
@@ -2338,8 +2191,7 @@ _informe_sin_conflicto = InformePleno.model_validate(dict(
 test("conflictos_turnos_alternos: los valores de escape no generan conflicto",
      conflictos_turnos_alternos(_informe_sin_conflicto, _TRANS_GUIA), set())
 
-# Un informe SIN este caso (el mapa normal de _informe_con_mapa: A sin identificar, B
-# identificada, personas distintas) se pinta exactamente igual que antes de este cambio.
+# Sin este caso, el mapa normal se pinta como siempre.
 test("conflictos_turnos_alternos: sin personas repetidas, no hay nada que marcar",
      conflictos_turnos_alternos(_informe_con_mapa, _TRANS_GUIA), set())
 
@@ -2348,8 +2200,7 @@ render_guia(_informe_conflicto, _entrada_guia, _TRANS_GUIA, [], _tmp_guia6)
 _html_guia6 = Path(_tmp_guia6).read_text(encoding="utf-8")
 os.remove(_tmp_guia6)
 
-# Mismo peso visual que la voz mezclada (voz-alerta), y las dos entradas en conflicto
-# lo llevan (aparece dos veces: una por cada etiqueta implicada).
+# Mismo peso visual que la voz mezclada; las dos etiquetas en conflicto lo llevan.
 test("render_guia: el conflicto de turnos alternos lleva la clase de alerta fuerte",
      _html_guia6.count('class="voz voz-alerta"'), 2)
 test("render_guia: trae su propia frase, distinta de la de voces mezcladas",
@@ -2398,8 +2249,7 @@ test("cargar_objeciones: se releen como Problema",
 test("cargar_objeciones: conserva el contenido",
      [p.model_dump() for p in _releidas], [p.model_dump() for p in _problemas_obj])
 
-# Sobrescribir con una lista vacía borra el fichero: no debe arrastrar objeciones de
-# una ejecución anterior, mismo criterio que escribir_comprobaciones() en plenos_guia.py.
+# Una lista vacía borra el fichero para no arrastrar objeciones de una ejecución anterior.
 guardar_objeciones(_tmp_obj, _fecha_obj, [])
 test("guardar_objeciones: lista vacía borra el fichero (no arrastra lo anterior)",
      _ruta_obj.exists(), False)
@@ -2434,16 +2284,12 @@ _informe_reh = InformePleno.model_validate(INFORME_MINIMO)
 (_carpeta_reh / "entrada.json").write_text(
     json.dumps({"video_id": None, "fecha": _fecha_reh, "titulo": "Pleno de prueba",
                "video_url": None}), encoding="utf-8")
-# La ruta interna ('orden_del_dia[0].texto') es a propósito: es la forma en la que
-# el auditor cita de verdad una sección, y es la que _ruta_legible traduce al mismo
-# "Punto 1º) ..." que usa el acta y la guía.
+# Ruta interna a propósito: es como el auditor cita una sección y la que traduce _ruta_legible.
 guardar_objeciones(_carpeta_reh, _fecha_reh,
                    [Problema(seccion="orden_del_dia[0].texto", afirmacion_dudosa="x",
                             motivo="y", evidencia="[00:00:01] Buenas tardes.")])
 
-# El .txt de una corrida anterior, ya desfasado: el bug real que motiva este cambio
-# es justo este — el acta y la guía se regeneran al día, pero el aviso se queda
-# citando una ruta interna del JSON que la funcionaria no puede interpretar.
+# El .txt de una corrida anterior, desfasado: el aviso no debe seguir citando rutas internas.
 _ruta_txt_reh = _carpeta_reh / "COMPROBAR ANTES DE SELLAR.txt"
 _ruta_txt_reh.write_text(
     "AVISO DE UNA CORRIDA ANTERIOR YA DESFASADO\norden_del_dia[2].texto\n",
@@ -2459,8 +2305,7 @@ try:
     test("--rehacer-acta: la guía recupera la sección de comprobaciones del fichero persistido",
          "Puntos que conviene comprobar" in _html_reh, True)
 
-    # El acta, la guía y el .txt tienen que contar lo mismo: los tres se regeneran
-    # juntos en _componer_guia, así que el .txt no puede quedarse con el aviso viejo.
+    # Acta, guía y .txt se regeneran juntos en _componer_guia y deben contar lo mismo.
     _txt_reh = _ruta_txt_reh.read_text(encoding="utf-8")
     test("--rehacer-acta: el .txt de comprobaciones también se regenera",
          "AVISO DE UNA CORRIDA ANTERIOR" in _txt_reh, False)
@@ -2469,8 +2314,7 @@ try:
     test("--rehacer-acta: el .txt nombra el punto igual que la guía y el acta",
          "Punto 1º)" in _txt_reh, True)
 
-    # Un pleno sin fichero de objeciones (plenos anteriores a este cambio) sigue
-    # generando la guía sin romperse, solo que sin esa sección.
+    # Sin fichero de objeciones (plenos antiguos) la guía se genera igual, sin esa sección.
     (_carpeta_reh / f"{_fecha_reh}-objeciones.json").unlink()
     with _ctx_reh.redirect_stdout(_io_reh.StringIO()):
         _codigo2 = _pp._rehacer_acta(_fecha_reh)
@@ -2482,11 +2326,7 @@ try:
          "dejar un aviso que ya no toca",
          _ruta_txt_reh.exists(), False)
 
-    # Si el .docx está bloqueado (Word abierto encima, el caso real que motiva esto),
-    # _rehacer_acta no debe abortar: la guía y el .txt no tienen ninguna culpa y son
-    # justo lo que se estaba regenerando (mismo criterio que procesar_pleno() con el
-    # .docx). Se simula el bloqueo sustituyendo render_acta por una que falla, en vez
-    # de pelearse con un lock de fichero real.
+    # Con el .docx bloqueado (Word abierto) _rehacer_acta no debe abortar. Se simula con un render_acta que falla.
     import plenos_acta as _pa_reh
 
     def _render_bloqueado(*_a, **_k):
@@ -2501,9 +2341,7 @@ try:
     finally:
         _pa_reh.render_acta = _render_original
 
-    # El código de salida habla del .docx, y es de lo que se fía el asistente para
-    # saber si el reintento sirvió: 1 = sigue sin escribirse. Que la función NO aborte
-    # lo dicen las dos aserciones siguientes (avisa, y la guía se regenera igual).
+    # El código de salida habla del .docx (1 = sigue sin escribirse); las aserciones siguientes comprueban que no aborta.
     test("--rehacer-acta: con el .docx bloqueado, el código de salida lo dice",
          _codigo3, 1)
     test("--rehacer-acta: con el .docx bloqueado, avisa de que puede estar abierto en Word",
@@ -2511,10 +2349,7 @@ try:
     test("--rehacer-acta: con el .docx bloqueado, la guía se regenera igualmente",
          (_carpeta_reh / f"{_fecha_reh}-guia-de-verificacion.html").exists(), True)
 
-    # El caso simétrico, que pasó de verdad el 2026-09-03: la guía HTML de la corrida
-    # anterior abierta en el navegador da PermissionError, y con un solo try/except para
-    # los dos ficheros eso dejaba el .txt sin escribir. El asistente lo reescribía luego
-    # sin objeciones legibles y la funcionaria leía "orden_del_dia[0]" a secas.
+    # Caso simétrico: la guía HTML abierta en el navegador (PermissionError) no debe dejar el .txt sin escribir.
     import plenos_guia as _pg_reh
 
     guardar_objeciones(_carpeta_reh, _fecha_reh,
@@ -2550,9 +2385,7 @@ finally:
     _pp.BORRADOR_DIR = _bd_reh
 
 
-# La presidenta de la Asociación de Jubilados es una concejala, no público: sin este
-# dato el acta del 3 de septiembre de 2026 atribuyó sus ruegos a "la presidenta de la
-# Asociación de Jubilados", sin su nombre, como si fuera una vecina asistente.
+# La presidenta de la Asociación de Jubilados es concejala, no público.
 test("CORPORACION: dice que la presidenta de los jubilados es la concejala Chari",
      "Asociación de Jubilados" in _pi.CORPORACION
      and "Mª Rosario Cerdán Pérez" in _pi.CORPORACION, True)
@@ -2598,11 +2431,7 @@ test("asuntos fuera del orden del día: campo opcional, informes viejos siguen v
 # ── las dos causas de «no hay acta» no se confunden ───────────────────────────
 print("── las dos causas de «no hay acta» ──────────────────────────────────")
 
-# El .docx abierto en Word dejaba ruta_acta=None igual que "el tipo de sesión no
-# consta", y el asistente daba siempre el segundo motivo: falso, y encima mandaba a
-# la funcionaria a pagar otro bucle de LLM para arreglar algo que se arregla cerrando
-# Word. `fallo_acta` las separa, y --rehacer-acta devuelve 1 cuando el .docx no se
-# escribió, que es de lo que se fía el asistente para reintentarlo gratis.
+# El .docx abierto en Word no es "tipo de sesión no consta": fallo_acta las separa y --rehacer-acta devuelve 1 si no se escribió.
 import plenos_acta as _pa_fallo
 
 def _render_bloqueado(informe, ruta):
@@ -2660,8 +2489,7 @@ def _mensaje_de(r):
     return "no lanzó"
 
 
-# El caso que motiva todo esto: sin el cuerpo, el registro solo diría "402 Client
-# Error" y habría que entrar al panel de OpenRouter a ver por qué paró el pleno.
+# Sin el cuerpo de la respuesta, el registro solo diría "402 Client Error".
 _m402 = _mensaje_de(_respuesta_http(
     402, '{"error":{"code":402,"message":"Insufficient credits"}}', "Payment Required"))
 test("verificar_respuesta: el motivo del 402 llega al mensaje",
@@ -2671,6 +2499,254 @@ test("verificar_respuesta: sin cuerpo, el mensaje de requests queda intacto",
      "400 Client Error: Bad Request for url: https://ejemplo/api")
 test("verificar_respuesta: una respuesta correcta pasa y se devuelve",
      _verificar(_respuesta_http(200, "ok", "OK")).status_code, 200)
+
+
+# ── intervinientes, topónimos y reglas nuevas de los prompts ──────────────────
+print("── intervinientes y prompts ──────────────────────────────────────────")
+import plenos_informe as _pi_iv
+import procesar_pleno as _pp_iv
+
+_iv = _pi_iv.parsear_intervinientes(
+    "- Fernando Pons Mayor = Nando, Pons\nMª Rosario Cerdán Pérez = Chari\n  \nMario Cerdán Ochoa")
+test("intervinientes: una persona por línea, apodos separados por coma, apodo opcional",
+     _iv, [{"nombre": "Fernando Pons Mayor", "apodos": ["Nando", "Pons"]},
+           {"nombre": "Mª Rosario Cerdán Pérez", "apodos": ["Chari"]},
+           {"nombre": "Mario Cerdán Ochoa", "apodos": []}])
+test("intervinientes: sin lista no hay bloque", _pi_iv.bloque_intervinientes(None), "")
+_b = _pi_iv.bloque_intervinientes(_iv)
+test("intervinientes: el bloque lleva nombre y apodos",
+     "Fernando Pons Mayor — en la sesión le llaman: «Nando», «Pons»" in _b
+     and "- Mario Cerdán Ochoa\n" in _b, True)
+
+_enviados = []
+_llamar_orig = _pi_iv._llamar_llm
+_pi_iv._llamar_llm = lambda sistema, contenido, *a, **k: (_enviados.append(contenido),
+                                                            (_ for _ in ()).throw(StopIteration))[1]
+for _fn, _args in ((_pi_iv.generar_informe, ("T",)),
+                   (_pi_iv.auditar_informe, ("T", _pi_iv.InformePleno.model_construct())),
+                   (_pi_iv.corregir_informe, ("T", _pi_iv.InformePleno.model_construct(), []))):
+    for _iv_arg in (_iv, None):
+        try:
+            _fn(*_args, intervinientes=_iv_arg) if _iv_arg else _fn(*_args)
+        except (StopIteration, RuntimeError):
+            pass
+_pi_iv._llamar_llm = _llamar_orig
+test("intervinientes: generador, auditor y corrector reciben el bloque antes de la transcripción",
+     [c.startswith("INTERVINIENTES DE ESTA SESIÓN") for c in _enviados],
+     [True, False, True, False, True, False])
+
+for _rol in ("PROMPT_GENERADOR", "PROMPT_AUDITOR", "PROMPT_CORRECTOR"):
+    _t = getattr(_pi_iv, _rol)
+    test(f"{_rol}: lleva las reglas de intervinientes y el listado de la Corporación",
+         "INTERVINIENTES DE LA SESIÓN" in _t and "CORPORACIÓN MUNICIPAL" in _t, True)
+for _t in (_pi_iv.PROMPT_GENERADOR, _pi_iv.PROMPT_CORRECTOR):
+    test("topónimos: generador y corrector los listan todos",
+         all(x in _t for x in _pi_iv.TOPONIMOS), True)
+test("generador: reglas 6 bis, 14 bis y 16 quater presentes",
+     all(r in _pi_iv.PROMPT_GENERADOR for r in ("6 bis. NO RECONSTRUYAS", "14 bis. LAS RESPUESTAS",
+                                                "16 quater. INSULTOS")), True)
+test("auditor: revisa datos sin frase clara y reproches personales",
+     "DATOS SIN UNA FRASE CLARA" in _pi_iv.PROMPT_AUDITOR
+     and "REPROCHES PERSONALES" in _pi_iv.PROMPT_AUDITOR, True)
+test("corrector: no deshace las reglas nuevas", "6 bis" in _pi_iv.PROMPT_CORRECTOR
+     and "16 quater" in _pi_iv.PROMPT_CORRECTOR, True)
+test("la 16 no contradice la 16 quater: remite a ella para el reproche personal",
+     "16 quater" in _pi_iv.PROMPT_GENERADOR.split("16 bis.")[0], True)
+
+_kt = _pp_iv.keyterms_del_pleno(_iv)
+test("keyterms: toponimos fijos + nombres y apodos del pleno, sin duplicados",
+     all(t in _kt for t in ("Pesquera", "Las Chorreras", "Playeta", "Keltiber", "PR-53",
+                            "GR-64", "GR-66", "Nando", "Chari", "Fernando Pons Mayor"))
+     and len(_kt) == len({t.lower() for t in _kt}), True)
+test("keyterms: sin intervinientes quedan los fijos", _pp_iv.keyterms_del_pleno(None),
+     list(dict.fromkeys(_pp_iv.AAI_KEYTERMS)))
+
+
+from plenos_acta import normalizar_cargos as _nc, tipografia as _tip
+test("cargos: «la Sra. Alcaldesa» pasa a la Teniente de Alcalde",
+     _nc("La Sra. Alcaldesa da cuenta del decreto."), "La Sra. Teniente de Alcalde da cuenta del decreto.")
+test("cargos: «en funciones» y minúsculas también",
+     _nc("Responde la alcaldesa en funciones que sí."), "Responde la Sra. Teniente de Alcalde que sí.")
+test("cargos: una cita entre comillas se respeta",
+     _nc("lamenta el uso de términos como “alcaldesa accidental” para referirse a ella."),
+     "lamenta el uso de términos como “alcaldesa accidental” para referirse a ella.")
+test("cargos: lo que ya está bien no cambia",
+     _nc("La Sra. Teniente de Alcalde propone."), "La Sra. Teniente de Alcalde propone.")
+test("tipografía: comillas rectas y cargos a la vez",
+     _tip('La alcaldesa dice "sí"'), "La Sra. Teniente de Alcalde dice “sí”")
+
+
+# ── votaciones coherentes, calificaciones vetadas y fecha (acta del 3-IX, 2.ª vuelta) ──
+print("── coherencia de votaciones y fecha ──────────────────────────────────")
+from plenos_informe import Votacion as _V, PuntoOrdenDia as _P, InformePleno as _IP, incoherencias as _inc
+test("recuento completo + 'no consta' → se deduce aprobado (3-2-2)",
+     _V(resultado="no consta", modalidad="recuento", a_favor=3, en_contra=2, abstenciones=2).resultado,
+     "aprobado")
+test("recuento completo + 'no consta' → se deduce rechazado (3-4)",
+     _V(resultado="no consta", modalidad="recuento", a_favor=3, en_contra=4).resultado, "rechazado")
+test("empate: no se deduce, depende del voto de calidad",
+     _V(resultado="no consta", modalidad="recuento", a_favor=3, en_contra=3).resultado, "no consta")
+test("recuento incompleto: no se deduce",
+     _V(resultado="no consta", modalidad="recuento", a_favor=3).resultado, "no consta")
+
+def _informe_con(punto_kw, ruegos=()):
+    base = dict(tipo_sesion="ordinaria", solicitantes=[], asistentes=[], ausentes=[],
+                declaraciones_apertura=[], ruegos_y_preguntas=list(ruegos), resumen_corto="r")
+    punto = {"numero": 1, "parte": "resolutiva", "titulo": "T", "texto": "Debate.", **punto_kw}
+    return _IP(orden_del_dia=[_P(**punto)], **base)
+
+_acta7 = _informe_con(dict(acuerdo="rechazar la aprobación del acta del 7 de julio",
+                           votacion=_V(resultado="no consta", modalidad="recuento",
+                                       a_favor=3, en_contra=2, abstenciones=2)))
+test("incoherencia: acuerdo que rechaza lo que el recuento aprueba",
+     [p.seccion for p in _inc(_acta7)], ["orden_del_dia[0].acuerdo"])
+_ok = _informe_con(dict(acuerdo="aprobar el acta del 7 de julio",
+                        votacion=_V(resultado="aprobado", modalidad="recuento", a_favor=3, en_contra=2)))
+test("coherente: sin problemas", _inc(_ok), [])
+_rech = _informe_con(dict(acuerdo="rechazar la solicitud de asistencia jurídica",
+                          votacion=_V(resultado="rechazado", modalidad="recuento", a_favor=3, en_contra=4)))
+test("rechazo coherente: sin problemas", _inc(_rech), [])
+_mal = _informe_con(dict(acuerdo="aprobar la solicitud",
+                         votacion=_V(resultado="rechazado", modalidad="recuento", a_favor=5, en_contra=2)))
+test("incoherencia: resultado contrario al recuento, y acuerdo que no dice rechazar",
+     sorted(p.seccion for p in _inc(_mal)), ["orden_del_dia[0].acuerdo", "orden_del_dia[0].votacion"])
+_tenso = _informe_con(dict(texto="Se produce un tenso enfrentamiento entre ambos."))
+test("16 quater: «tenso enfrentamiento» se marca para el corrector",
+     [p.seccion for p in _inc(_tenso)], ["orden_del_dia[0].texto"])
+
+from procesar_pleno import fijar_fecha as _ff
+test("fecha: manda la indicada al procesar, aunque el modelo oyera otra",
+     _ff(_informe_con(dict()).model_copy(update={"fecha_pleno": "2026-09-30"}), "2026-09-03").fecha_pleno,
+     "2026-09-03")
+test("fecha: también rellena el null", _ff(_informe_con(dict()), "2026-09-03").fecha_pleno, "2026-09-03")
+test("topónimos: Hoya de las Abejas", "Hoya de las Abejas" in _pi_iv.TOPONIMOS, True)
+
+
+# ── citas literales, topónimos parecidos, auditor con otro modelo y atribuciones ─────
+print("── citas, topónimos, modelo del auditor, atribuciones ────────────────")
+import plenos_informe as _pj
+from plenos_informe import citas_no_halladas as _citas, toponimos_parecidos as _topos
+
+_TR = ("[00:10:00] Interviniente A: Yo lo que digo es que usted nos ha mentido a todos los "
+       "vecinos en este asunto y no pienso callarme\n"
+       "[00:10:20] Interviniente B: Eso no es cierto, Chari, y lo sabes perfectamente bien")
+_c_ok = _informe_con(dict(texto='Dª Rosario afirma: “usted nos ha mentido a todos los vecinos en este asunto”.'))
+test("citas: una cita que está en la transcripción no se marca", _citas(_c_ok, _TR), [])
+_c_mal = _informe_con(dict(texto='Dª Rosario amenaza: “voy a promover su expulsión del grupo por traidor”.'))
+test("citas: una cita inventada se marca", [p.seccion for p in _citas(_c_mal, _TR)],
+     ["orden_del_dia[0].texto"])
+_c_nombre = _informe_con(dict(texto='Responde: “Eso no es cierto, Dª Rosario, y lo sabes perfectamente bien”.'))
+test("citas: un nombre sustituido dentro de la cita no dispara", _citas(_c_nombre, _TR), [])
+_c_corta = _informe_con(dict(texto='Lamenta el uso de “alcaldesa accidental” en la prensa.'))
+test("citas: las muy cortas se saltan", _citas(_c_corta, _TR), [])
+_c_elip = _informe_con(dict(texto='Dice: “usted nos ha mentido a todos los vecinos … y no pienso callarme”.'))
+test("citas: los puntos suspensivos parten la cita", _citas(_c_elip, _TR), [])
+test("citas: sin transcripción, incoherencias no las comprueba", _inc(_c_mal), [])
+test("citas: con transcripción, incoherencias sí las comprueba",
+     [p.seccion for p in _inc(_c_mal, _TR)], ["orden_del_dia[0].texto"])
+
+test("topónimos: «Hoya de las Vejas» se marca",
+     [p.evidencia for p in _topos(_informe_con(dict(texto="Se arregla el camino de la Hoya de las Vejas.")))],
+     ["(comprobación automática de topónimos)"])
+test("topónimos: el nombre exacto no se marca",
+     _topos(_informe_con(dict(texto="Se arregla el camino de la Hoya de las Abejas y Las Chorreras."))), [])
+test("topónimos: un lugar que no está en la lista no se detecta ni molesta",
+     _topos(_informe_con(dict(texto="Se arregla el camino del Cerro Gordo."))), [])
+test("topónimos: el gentilicio «Enguídano» no se marca",
+     _topos(_informe_con(dict(texto="Un vecino enguidano pregunta."))), [])
+test("topónimos: GR-65 es casi GR-64 y se marca",
+     len(_topos(_informe_con(dict(texto="Por el GR-65 hay un desprendimiento.")))), 1)
+
+_cuerpos = []
+_peticion_real = _pj._peticion
+try:
+    def _peticion_espia(cuerpo, intentos=4):
+        _cuerpos.append(cuerpo)
+        return {"choices": [{"finish_reason": "stop", "message": {"content": '{"problemas": []}'}}],
+                "usage": {}}
+    _pj._peticion = _peticion_espia
+    with contextlib.redirect_stdout(io.StringIO()):
+        _pj._llamar_llm("i", "c", AuditoriaInforme, None, "x")
+        _pj._llamar_llm("i", "c", AuditoriaInforme, None, "auditor", _pj.MODELO_AUDITOR)
+finally:
+    _pj._peticion = _peticion_real
+test("auditor: el redactor sigue en Gemini con temperatura 0",
+     (_cuerpos[0]["model"], _cuerpos[0].get("temperature"), "reasoning" in _cuerpos[0]),
+     ("google/gemini-2.5-pro", 0, False))
+test("auditor: otro modelo, sin temperatura y con razonamiento",
+     (_cuerpos[1]["model"], "temperature" in _cuerpos[1], _cuerpos[1].get("reasoning")),
+     ("anthropic/claude-opus-5.5", False, {"enabled": True}))
+test("auditor: no es el mismo modelo que el redactor", _pj.MODELO_AUDITOR != _pj.MODELO, True)
+
+_atrib_llamadas, _vistos_corrector = [], []
+def _atrib_fake(t, i):
+    _atrib_llamadas.append(1)
+    return AuditoriaInforme(problemas=[Problema(seccion="ruegos_y_preguntas[0]",
+        afirmacion_dudosa="Pregunta atribuida a D. Joaquín", motivo="la hizo un vecino",
+        evidencia="usted se puede enterar")])
+_auds = iter([AuditoriaInforme(problemas=[]), AuditoriaInforme(problemas=[])])
+def _cor_atrib(t, i, p):
+    _vistos_corrector.append([x.seccion for x in p])
+    return i.model_copy(update={"resumen_corto": "corregido"})
+bucle_informe("t", generar=lambda t: _informe_v1, auditar=lambda t, i: next(_auds),
+              corregir=_cor_atrib, atribuciones=_atrib_fake)
+test("atribuciones: se ejecuta una sola vez", len(_atrib_llamadas), 1)
+test("atribuciones: sus objeciones llegan al corrector", _vistos_corrector[0], ["ruegos_y_preguntas[0]"])
+test("atribuciones: con fakes y sin inyectarla no se llama a ningún modelo",
+     bucle_informe("t", generar=lambda t: _informe_v1,
+                   auditar=lambda t, i: AuditoriaInforme(problemas=[]),
+                   corregir=lambda t, i, p: i)[1], [])
+test("atribuciones: el prompt pregunta quién lo dijo y pide citar el turno",
+     all(x in _pj.PROMPT_ATRIBUCIONES for x in ("UNA sola comprobación", "SEÑALES DE PÚBLICO",
+                                                 "NO señales")), True)
+
+import quejas_pleno as _qp
+_malo = _informe_con(dict(texto="Se produce un tenso enfrentamiento en Pesquera."))
+test("quejas: un informe con la queja en pie la detecta",
+     [c[0] for c in _qp.CASOS["2026-09-03"] if not c[2](_malo)][:3], ["fecha", "punto1-votacion", "punto3-votacion"])
+test("quejas: fuera_de_citas respeta las citas",
+     "alcaldesa" in _qp.fuera_de_citas("la alcaldesa dice “alcaldesa accidental”").lower(), True)
+test("quejas: texto entre citas no cuenta", _qp.fuera_de_citas("dice “alcaldesa accidental” fin").count("alcaldesa"), 0)
+
+
+# ── recuentos protegidos y auditor Opus ───────────────────────────────────────────────
+print("── recuentos protegidos ──────────────────────────────────────────────")
+from plenos_informe import restaurar_recuentos as _rr
+_con34 = _informe_con(dict(acuerdo="rechazar la solicitud",
+                           votacion=_V(resultado="rechazado", modalidad="recuento", a_favor=3, en_contra=4)))
+_sin34 = _informe_con(dict(acuerdo="rechazar la solicitud",
+                           votacion=_V(resultado="rechazado", modalidad="recuento")))
+_r, _av = _rr(_con34, _sin34)
+test("recuento: el que el corrector borra se restaura",
+     (_r.orden_del_dia[0].votacion.a_favor, _r.orden_del_dia[0].votacion.en_contra), (3, 4))
+test("recuento: el resultado del corrector se respeta", _r.orden_del_dia[0].votacion.resultado, "rechazado")
+test("recuento: queda un aviso para quien revisa", [a.seccion for a in _av], ["orden_del_dia[0].votacion"])
+_r2, _av2 = _rr(_con34, _informe_con(dict(acuerdo="rechazar la solicitud")))
+test("recuento: también si el corrector deja la votación en null",
+     (_r2.orden_del_dia[0].votacion.a_favor, len(_av2)), (3, 1))
+_r3, _av3 = _rr(_sin34, _con34)
+test("recuento: añadir uno no genera aviso", _av3, [])
+_r4, _av4 = _rr(_con34, _con34.model_copy(update={"resumen_corto": "otro"}))
+test("recuento: si no se toca no hay aviso", _av4, [])
+_c_otro = _informe_con(dict(acuerdo="x", votacion=_V(resultado="rechazado", modalidad="recuento",
+                                                     a_favor=5, en_contra=1)))
+_r5, _av5 = _rr(_con34, _c_otro)
+test("recuento: un recuento distinto (no borrado) lo decide el corrector", _av5, [])
+test("auditor: Opus 5.5", _pj.MODELO_AUDITOR, "anthropic/claude-opus-5.5")
+test("recuento: el auditor y el de atribuciones saben que la etiqueta mezclada no lo invalida",
+     ("NO INVALIDA UN RECUENTO" in _pj.PROMPT_AUDITOR, "no los invalida" in _pj.PROMPT_ATRIBUCIONES),
+     (True, True))
+
+_g34 = _con34
+_n = iter([AuditoriaInforme(problemas=[Problema(seccion="orden_del_dia[0].votacion",
+            afirmacion_dudosa="3-4", motivo="etiqueta mezclada", evidencia="e")]),
+           AuditoriaInforme(problemas=[])])
+_inf_f, _pend_f = bucle_informe("t", generar=lambda t: _g34, auditar=lambda t, i: next(_n),
+                                corregir=lambda t, i, p: _sin34)
+test("bucle: el recuento borrado por el corrector se restaura",
+     (_inf_f.orden_del_dia[0].votacion.a_favor, _inf_f.orden_del_dia[0].votacion.en_contra), (3, 4))
+test("bucle: el aviso llega a los pendientes",
+     _pend_f[-1].evidencia, "(comprobación automática de recuentos)")
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────
