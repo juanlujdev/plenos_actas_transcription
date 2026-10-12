@@ -46,10 +46,11 @@ BORRADOR_DIR = RAIZ / "uploads" / "actas"
 
 
 def clave_pleno(fecha: str, tipo: str | None = None) -> str:
-    """Nombre de la carpeta de un pleno: la fecha, más «-extraordinario» si lo es, para que
-    un extraordinario y un ordinario del mismo día no se pisen. Los ordinarios siguen
-    llamándose solo por la fecha. La fecha se recupera con clave[:10]."""
-    return f"{fecha}-extraordinario" if tipo == "extraordinaria" else fecha
+    """Nombre de la carpeta de un pleno: la fecha más «-ordinario» o «-extraordinario», para
+    que se vea cuál es y no se pisen dos plenos del mismo día. Sin tipo (o en las carpetas
+    antiguas) es solo la fecha. La fecha se recupera con clave[:10]."""
+    sufijo = {"ordinaria": "-ordinario", "extraordinaria": "-extraordinario"}.get(tipo or "", "")
+    return fecha + sufijo
 
 
 def dir_borrador(fecha: str) -> Path:
@@ -468,7 +469,9 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    transcripcion: str | None = None,
                    convocatoria: bytes | None = None,
                    intervinientes: list[dict] | None = None,
-                   tipo: str | None = None) -> ResultadoPleno:
+                   tipo: str | None = None,
+                   voces: dict[str, str] | None = None,
+                   elegir_voces=None) -> ResultadoPleno:
     """Pipeline completo de un pleno: audio → transcripción → acta → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
@@ -476,8 +479,11 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     convocatoria: bytes del PDF del orden del día, o None.
     intervinientes: [{'nombre', 'apodos'}] o None; se guarda en entrada.json para --rehacer-informe.
     tipo: 'ordinaria' | 'extraordinaria' | None. Solo decide la carpeta (ver clave_pleno).
+    voces: {etiqueta: persona} confirmadas por la secretaría (se guardan en entrada.json).
+    elegir_voces: función(transcripcion) -> dict | None que las pregunta a una persona,
+        solo si `voces` es None; devolver {} es «no quiero confirmar ninguna».
     """
-    from plenos_informe import MAX_VUELTAS, _plural, bucle_informe
+    from plenos_informe import MAX_VUELTAS, _plural, aplicar_voces, bucle_informe
     from plenos_acta import render_acta
 
     if transcripcion is None:
@@ -509,9 +515,19 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     _guardar_json(ruta_entrada, entrada)
     print(f"transcripción guardada en {ruta_md}")
 
+    # Después de guardar lo caro, y antes del bucle: es quien decide quién es cada voz.
+    if voces is None and elegir_voces:
+        voces = elegir_voces(transcripcion)
+    if voces is not None:
+        entrada["voces"] = voces
+        _guardar_json(ruta_entrada, entrada)
+    voces = voces or None
+
     print("generando acta (bucle generador→auditor→corrector)...")
-    informe, pendientes = (bucle_informe(transcripcion, convocatoria, intervinientes=intervinientes)
-                           if intervinientes else bucle_informe(transcripcion, convocatoria))
+    # Solo los kwargs que haya, para no cambiar la firma que esperan los tests.
+    extra = {k: v for k, v in (("intervinientes", intervinientes), ("voces", voces)) if v}
+    informe, pendientes = bucle_informe(transcripcion, convocatoria, **extra)
+    informe = aplicar_voces(informe, voces)
 
     informe = fijar_fecha(informe, fecha)
     if tipo and informe.tipo_sesion in ("ordinaria", "extraordinaria") and informe.tipo_sesion != tipo:
@@ -618,7 +634,8 @@ def leer_intervinientes(ruta: str | None) -> list[dict] | None:
 
 
 def _rehacer_informe(clave: str, convocatoria_pdf: str | None = None,
-                     intervinientes: list[dict] | None = None) -> "ResultadoPleno | None":
+                     intervinientes: list[dict] | None = None,
+                     elegir_voces=None) -> "ResultadoPleno | None":
     """Regenera el acta reutilizando la transcripción guardada (solo pasa por Gemini).
     `clave`: la carpeta del pleno (ver clave_pleno)."""
     fecha = clave[:10]
@@ -646,7 +663,9 @@ def _rehacer_informe(clave: str, convocatoria_pdf: str | None = None,
                           convocatoria=convocatoria,
                           # La que se pase manda; si no, la guardada.
                           intervinientes=intervinientes or entrada.get("intervinientes"),
-                          tipo=entrada.get("tipo"))
+                          tipo=entrada.get("tipo"),
+                          # Las guardadas no se vuelven a preguntar; si no confirmó ninguna ({}), sí.
+                          voces=entrada.get("voces") or None, elegir_voces=elegir_voces)
 
 
 def _rehacer_acta(clave: str) -> int:

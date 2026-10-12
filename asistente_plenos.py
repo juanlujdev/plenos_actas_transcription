@@ -35,10 +35,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from procesar_pleno import (ErrorDeDescarga, clave_pleno, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
                             _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
-from plenos_informe import normalizar_fecha
+from plenos_informe import (PERSONAS_VOZ, VOZ_MEZCLADA, VOZ_PUBLICO, muestras_por_etiqueta,
+                            normalizar_fecha)
 # El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py porque
 # procesar_pleno también lo escribe en --rehacer-acta, sin pasar por aquí.
-from plenos_guia import (_avisos_legibles, _lineas_aviso, escribir_comprobaciones,
+from plenos_guia import (_avisos_legibles, _lineas_aviso, enlace_video, escribir_comprobaciones,
                          texto_comprobaciones)
 
 DIR_CONFIG = "Configuración (no tocar)"
@@ -155,6 +156,7 @@ class Consola:
         self.fichero = open(ruta_log, "a", encoding="utf-8")
         self._resto = ""
         self._candado = threading.Lock()
+        self.preguntando = False  # mientras responde, el latido no la interrumpe
 
     def write(self, texto: str) -> int:
         # El pipeline escribe por trozos: se reensamblan líneas para poder traducirlas.
@@ -219,6 +221,8 @@ class Latido:
 
     def _latir(self) -> None:
         while not self._parar.wait(self.cada):
+            if self.consola.preguntando:
+                continue
             minutos = int((time.monotonic() - self._inicio) / 60)
             self.consola.decir(f"   ... sigue trabajando (llevamos {minutos} minutos)")
 
@@ -352,6 +356,62 @@ def preguntar_grabacion_local(consola: Consola) -> str | None:
         consola.decir("\n   No encuentro ese archivo.")
         return None
     return ruta
+
+
+def _preguntar_voces(consola: Consola, transcripcion: str, video_url: str | None) -> dict[str, str]:
+    opciones = [f"{mostrar}" + (f"  (le llaman «{apodo}»)" if apodo else "")
+                for _, mostrar, apodo in PERSONAS_VOZ]
+    opciones += ["Público: un vecino o una vecina",
+                 "Hay varias personas mezcladas en esta voz",
+                 "No lo sé: que lo decida el programa"]
+    voces: dict[str, str] = {}
+    for etiqueta, (total, muestras) in muestras_por_etiqueta(transcripcion).items():
+        if total < 3:  # un ruido suelto no merece pregunta
+            continue
+        consola.decir(f"\n   ── Voz {etiqueta}: {total} intervenciones ──")
+        for hms, frase in muestras:
+            consola.decir(f"   [{hms}]  {frase}")
+            enlace = enlace_video(video_url, hms)
+            if enlace:
+                consola.decir(f"             {enlace}")
+        consola.decir(f"\n   ¿Quién habla en la voz {etiqueta}?")
+        eleccion = preguntar_opcion(consola, opciones)
+        if eleccion <= len(PERSONAS_VOZ):
+            voces[etiqueta] = PERSONAS_VOZ[eleccion - 1][0]
+        elif eleccion == len(PERSONAS_VOZ) + 1:
+            voces[etiqueta] = VOZ_PUBLICO
+        elif eleccion == len(PERSONAS_VOZ) + 2:
+            voces[etiqueta] = VOZ_MEZCLADA
+    return voces
+
+
+def preguntar_voces(consola: Consola, transcripcion: str, video_url: str | None = None) -> dict[str, str]:
+    """La secretaría confirma quién es cada voz de la transcripción (frases repartidas por
+    toda la sesión, con su minuto y, si hay vídeo de YouTube, el enlace). Se llama a mitad
+    del pipeline, con stdout en la Consola: el prompt de input() se perdería en su filtro."""
+    anterior, consola.preguntando = sys.stdout, True
+    sys.stdout = consola.pantalla
+    try:
+        consola.decir("\n   La transcripción ya está hecha. Antes de redactar el acta necesito")
+        consola.decir("   que me ayudes: en la grabación cada voz tiene una letra (A, B, C...) y")
+        consola.decir("   yo no siempre sé quién es. Para cada una te enseño algunas frases, con")
+        consola.decir("   su minuto; si las reconoces, dime quién habla. Si no estás segura,")
+        consola.decir("   elige «No lo sé» y lo intentaré yo.")
+        if preguntar_opcion(consola, ["Sí, confirmar las voces ahora",
+                                      "No, que lo decida el programa"]) == 2:
+            return {}
+        while True:
+            voces = _preguntar_voces(consola, transcripcion, video_url)
+            nombres = {n: m for n, m, _ in PERSONAS_VOZ}
+            nombres[VOZ_PUBLICO], nombres[VOZ_MEZCLADA] = "Público (vecino o vecina)", "Varias personas mezcladas"
+            consola.decir("\n   Esto es lo que me has dicho:")
+            for etiqueta, persona in voces.items():
+                consola.decir(f"      Voz {etiqueta}:  {nombres.get(persona, persona)}")
+            if input("\n   ¿Es correcto?  (s/n)  ").strip().lower().startswith("s"):
+                consola.anotar(f"voces confirmadas: {voces}")
+                return voces
+    finally:
+        sys.stdout, consola.preguntando = anterior, False
 
 
 def preguntar_opcion(consola: Consola, opciones: list[str]) -> int:
@@ -518,6 +578,8 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         titulo = f"Pleno del {fecha_en_palabras(fecha)}"
     tipo = preguntar_tipo(consola_previa)
     clave = clave_pleno(fecha, tipo)
+    if tipo == "ordinaria" and not dir_borrador(clave).exists() and dir_borrador(fecha).exists():
+        clave = fecha  # carpeta de antes de que el nombre llevara el tipo: se reutiliza
     consola_previa.cerrar()
 
     # Nuevo registro con la fecha ya conocida.
@@ -558,7 +620,8 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
     def tarea(fuente=local):
         return procesar_pleno(fuente, video_id, titulo, fecha, None if local else url,
                               convocatoria=convocatoria, intervinientes=intervinientes,
-                              tipo=tipo)
+                              tipo=tipo, elegir_voces=lambda t: preguntar_voces(
+                                  consola, t, None if local else url))
 
     try:
         try:
@@ -593,7 +656,7 @@ def plenos_guardados(actas: Path) -> list[tuple[str, str]]:
     if not actas.exists():
         return salida
     for carpeta in sorted(actas.iterdir(), reverse=True):
-        if not (carpeta.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}(-extraordinario)?", carpeta.name)):
+        if not (carpeta.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}(-ordinario|-extraordinario)?", carpeta.name)):
             continue
         titulo = ""
         entrada = carpeta / "entrada.json"
@@ -619,10 +682,10 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
 
     intervinientes = None
     try:
-        guardados = json.loads((dir_borrador(clave) / "entrada.json")
-                               .read_text(encoding="utf-8")).get("intervinientes")
+        entrada = json.loads((dir_borrador(clave) / "entrada.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        guardados = None
+        entrada = {}
+    guardados = entrada.get("intervinientes")
     if not guardados:
         intervinientes = preguntar_intervinientes(consola)
 
@@ -631,7 +694,9 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
     consola.decir("   vez: son unos 5 minutos.\n")
 
     try:
-        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(clave, pdf, intervinientes))
+        resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(
+            clave, pdf, intervinientes,
+            elegir_voces=lambda t: preguntar_voces(consola, t, entrada.get("video_url"))))
         if resultado is None:
             consola.decir("\n   No he podido rehacer ese pleno: le falta la transcripción.")
             consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
@@ -658,7 +723,7 @@ def flujo_rehacer(inst: Instalacion, pantalla) -> None:
         consola.cerrar()
         return
     consola.decir("\n   ¿De qué pleno quieres volver a generar el documento?")
-    etiquetas = [f"{fecha_en_palabras(c[:10])}{'  (extraordinario)' if len(c) > 10 else ''}   {t}"
+    etiquetas = [f"{fecha_en_palabras(c[:10])}{'  (' + c[11:] + ')' if len(c) > 10 else ''}   {t}"
                  for c, t in plenos] + ["Volver al menú"]
     elegido = preguntar_opcion(consola, etiquetas)
     consola.cerrar()

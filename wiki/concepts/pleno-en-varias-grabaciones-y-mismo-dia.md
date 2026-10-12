@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-10-10
+date_updated: 2026-10-11
 source_count: 1
 ---
 
@@ -63,8 +63,11 @@ sustituirlo» cuando existe: un extraordinario habría borrado la transcripción
 `informe.json`, la convocatoria y `entrada.json` del ordinario (solo sobrevivían los
 `.docx`, porque su nombre lleva el tipo).
 
-**Decisión:** `procesar_pleno.clave_pleno(fecha, tipo)` → `<fecha>` para el ordinario
-(carpetas existentes intactas) y `<fecha>-extraordinario` para el extraordinario. Los
+**Decisión:** `procesar_pleno.clave_pleno(fecha, tipo)` → `<fecha>-ordinario` y
+`<fecha>-extraordinario`. Primero el ordinario conservaba el nombre solo con la fecha (para no
+tocar carpetas antiguas), pero en el explorador no se distinguía cuál era cuál: se cambió.
+Las carpetas antiguas (solo la fecha) siguen siendo válidas: el asistente las reutiliza para un
+ordinario si no existe la nueva, y `plenos_guardados` las lista. Los
 ficheros de dentro conservan el prefijo de la fecha pura (la guía y las comprobaciones
 llaman a `fecha_larga` con ella), así que solo cambia el nombre de la carpeta, y la
 **clave** de la carpeta es lo que circula en `--rehacer-informe`/`--rehacer-acta` y en
@@ -76,8 +79,8 @@ llaman a `fecha_larga` con ella), así que solo cambia el nombre de la carpeta, 
   difieren, `procesar_pleno` imprime un aviso en vez de elegir uno en silencio.
 - En CLI: `--extraordinario`. El tipo se guarda en `entrada.json` y
   `_rehacer_informe` lo reutiliza.
-- `plenos_guardados` acepta carpetas `AAAA-MM-DD(-extraordinario)?` y el menú de rehacer
-  marca los extraordinarios.
+- `plenos_guardados` acepta carpetas `AAAA-MM-DD(-ordinario|-extraordinario)?` y el menú de
+  rehacer muestra el tipo.
 - Descartado: detectar la colisión y proponer `-2` (más simple, pero el nombre no dice
   cuál es cuál).
 

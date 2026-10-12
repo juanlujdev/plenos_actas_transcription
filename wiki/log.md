@@ -293,3 +293,12 @@ Nuevo `wiki/concepts/pleno-en-varias-grabaciones-y-mismo-dia.md`: el asistente a
 archivo local donde pide la URL; `clave_pleno` separa carpetas de ordinario y extraordinario
 del mismo día (pregunta nueva en el asistente, `--extraordinario` en CLI). Enlazado desde
 `wiki/concepts/asistente-para-la-funcionaria.md`; CLAUDE.md actualizado.
+
+## [2026-10-12] ingest | Voces confirmadas por la secretaría
+
+Nuevo `wiki/concepts/voces-confirmadas-por-la-secretaria.md`: tras transcribir, el asistente
+pregunta quién es cada voz (`preguntar_voces`) y las inyecta como prueba en los cuatro roles
+(`bloque_voces`, `aplicar_voces`). Motivo: 12 «concejal no identificado» en el acta del 7-X.
+Se quitó y se volvió a poner el mismo día; tras probarla se decide conservarla. LÉEME
+(`asistente/LEEME.txt`) actualizado con el tipo de pleno, el archivo local y las voces;
+entrega nueva completa a la secretaria. CLAUDE.md actualizado.

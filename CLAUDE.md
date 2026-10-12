@@ -141,10 +141,17 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
 - **Un pleno en dos vídeos se une a mano; dos plenos del mismo día no se pisan.** Los dos
   audios se unen con ffmpeg y se pasan como archivo (el asistente lo acepta donde pide la
   URL; sin `video_url` la guía no lleva enlaces). La carpeta del borrador es
-  `procesar_pleno.clave_pleno(fecha, tipo)`: `<fecha>` o `<fecha>-extraordinario`; esa
+  `procesar_pleno.clave_pleno(fecha, tipo)`: `<fecha>-ordinario` o `<fecha>-extraordinario` (las carpetas de antes, solo `<fecha>`,
+  se reutilizan para un ordinario); esa
   clave (`clave[:10]` = fecha) es lo que reciben `--rehacer-*`. El asistente pregunta el
   tipo; CLI `--extraordinario`. Detalle en
   `wiki/concepts/pleno-en-varias-grabaciones-y-mismo-dia.md`.
+- **Las voces las confirma la secretaria, y eso sí es prueba.** Tras transcribir, el asistente
+  se detiene (`preguntar_voces`): por etiqueta, 5 frases repartidas por la sesión con minuto
+  (y enlace si hay YouTube) y a elegir entre `PERSONAS_VOZ`, público, «varias personas» o
+  «no lo sé». Van a `entrada.json` (`voces`), a los cuatro roles (`bloque_voces`) y, al
+  acabar el bucle, al mapa de voces (`aplicar_voces`). `--rehacer-informe` las reutiliza.
+  Detalle en `wiki/concepts/voces-confirmadas-por-la-secretaria.md`.
 - **Los intervinientes son una ayuda, no una prueba.** El asistente (y `--intervinientes
   fichero.txt`, una persona por línea: `Nombre completo = cómo la llaman`) recoge quién
   interviene y los apodos de ESE pleno (`Chari`, `Nando`). Van a `entrada.json`, a los

@@ -316,6 +316,73 @@ def bloque_intervinientes(intervinientes: list[dict] | None) -> str:
     return "INTERVINIENTES DE ESTA SESIÓN:\n" + "\n".join(lineas) + "\n\n"
 
 
+# Quién puede estar detrás de una etiqueta cuando la secretaría confirma las voces: (nombre
+# tal como va en el acta, cómo se le muestra y cómo la llaman). Es la corporación en código,
+# como CORPORACION; actualizar tras cada elección municipal.
+PERSONAS_VOZ = [
+    ("Dª Lorena Luján Chujfi", "Lorena Luján Chujfi (preside)", ""),
+    ("D. Sergio de Fez Cerezuela", "Sergio de Fez Cerezuela (Alcalde)", ""),
+    ("Dª Mª Rosario Cerdán Pérez", "Mª Rosario Cerdán Pérez", "Chari"),
+    ("D. Mario Cerdán Ochoa", "Mario Cerdán Ochoa", ""),
+    ("D. Joaquín Martínez Luján", "Joaquín Martínez Luján", "Joaquín"),
+    ("D. Pedro José Martínez Martínez", "Pedro José Martínez Martínez", "Pedro / Macario"),
+    ("D. Fernando Pons Mayor", "Fernando Pons Mayor", "Fernando / Nando"),
+    ("Dª Mª Elena Valera Navarro", "Mª Elena Valera Navarro (Secretaria)", "Elena"),
+]
+VOZ_PUBLICO = "un vecino asistente"
+VOZ_MEZCLADA = "etiqueta con voces mezcladas"
+
+
+def bloque_voces(voces: dict[str, str] | None) -> str:
+    """Mensaje con las voces que la secretaría ha confirmado escuchando la grabación."""
+    if not voces:
+        return ""
+    lineas = []
+    for etiqueta, persona in sorted(voces.items()):
+        if persona == VOZ_MEZCLADA:
+            texto = "varias personas mezcladas en la misma etiqueta (no se le atribuye ninguna identidad)"
+        elif persona == VOZ_PUBLICO:
+            texto = "público asistente (un vecino o una vecina, no un miembro de la Corporación)"
+        else:
+            texto = persona
+        lineas.append(f"- Interviniente {etiqueta}: {texto}")
+    return "VOCES CONFIRMADAS POR LA SECRETARÍA:\n" + "\n".join(lineas) + "\n\n"
+
+
+def aplicar_voces(informe, voces: dict[str, str] | None):
+    """Pone en el mapa de voces las identificaciones confirmadas por la secretaría, pase lo
+    que pase en el bucle: lo que una persona ha oído no se deja a la memoria del modelo."""
+    if not voces:
+        return informe
+    resto = [v for v in informe.identificacion_locutores if v.etiqueta not in voces]
+    confirmadas = [VozIdentificada(etiqueta=e, persona=p,
+                                   evidencia="Confirmada por la secretaría al escuchar la grabación")
+                   for e, p in sorted(voces.items())]
+    return informe.model_copy(update={"identificacion_locutores": resto + confirmadas})
+
+
+_TURNO = re.compile(r"^\[(\d\d:\d\d:\d\d)\] Interviniente (\w+): (.*)$", re.M)
+
+
+def muestras_por_etiqueta(transcripcion: str, n: int = 5, min_palabras: int = 8,
+                          max_car: int = 150) -> dict[str, tuple[int, list[tuple[str, str]]]]:
+    """{etiqueta: (nº de intervenciones, [(hh:mm:ss, frase)])} con n frases REPARTIDAS por
+    toda la sesión (no las primeras): si una etiqueta mezcla dos personas, el cambio de un
+    tramo a otro es lo que lo delata."""
+    turnos: dict[str, list[tuple[str, str]]] = {}
+    for hms, etiqueta, texto in _TURNO.findall(transcripcion):
+        turnos.setdefault(etiqueta, []).append((hms, texto.strip()))
+    salida = {}
+    for etiqueta, lista in sorted(turnos.items()):
+        largos = [t for t in lista if len(t[1].split()) >= min_palabras] or lista
+        pos = sorted({round(i * (len(largos) - 1) / max(n - 1, 1)) for i in range(min(n, len(largos)))})
+        muestras = [(h, t if len(t) <= max_car else t[:max_car].rsplit(" ", 1)[0] + "…")
+                    for h, t in (largos[p] for p in pos)]
+        salida[etiqueta] = (len(lista), muestras)
+    return salida
+
+
+
 # Reglas de uso de los intervinientes; el dato por pleno viaja en el mensaje (bloque_intervinientes).
 INTERVINIENTES_SESION = """INTERVINIENTES DE LA SESIÓN (opcional):
 Puede que el mensaje traiga, antes de la transcripción, un bloque "INTERVINIENTES DE ESTA
@@ -339,7 +406,19 @@ el que se las llama en la sala. Si no viene, ignora esta sección.
   bloque trae a un particular que no es de la Corporación, su nombre solo sirve para
   reconocerlo: sigue sin escribirse (ver PÚBLICO ASISTENTE).
 - El auditor no señala como inventado un nombre corregido gracias a este bloque; sí señala
-  una atribución que ni la grabación ni el mapa de voces sostienen, venga o no en el bloque."""
+  una atribución que ni la grabación ni el mapa de voces sostienen, venga o no en el bloque.
+- VOCES CONFIRMADAS POR LA SECRETARÍA (opcional): si el mensaje trae este bloque, cada línea
+  la ha confirmado una persona que ha ESCUCHADO la grabación, y SÍ vale como prueba, a
+  diferencia del bloque de intervinientes: a esa etiqueta se le atribuye todo lo que dice,
+  con ese nombre oficial, sin exigir cita ni timestamp; en `identificacion_locutores` va esa
+  persona y la evidencia es «Confirmada por la secretaría». Prueba también que esa persona
+  asistió y habló. Una frase suelta donde alguien se dirige a otra persona por su nombre NO
+  la contradice (se habla a los demás, no a uno mismo). «Público asistente» sigue las
+  reglas de PÚBLICO ASISTENTE; «varias personas mezcladas» es una etiqueta con voces
+  mezcladas, como ya se trata. Las etiquetas que no aparezcan en el bloque se identifican
+  como siempre. El auditor no marca como no respaldada una atribución confirmada; solo si
+  una intervención de esa etiqueta contradice de forma flagrante la confirmación (se
+  presenta como otra persona), lo señala, sin reescribirla."""
 
 
 CORPORACION = f"""CORPORACIÓN MUNICIPAL (para escribir bien los nombres —ver regla 4— y
@@ -1153,13 +1232,14 @@ def _llamar_llm(instrucciones: str, contenido: str, schema: type[BaseModel],
 
 
 def generar_informe(transcripcion: str, convocatoria: bytes | None = None,
-                    intervinientes: list[dict] | None = None) -> InformePleno:
+                    intervinientes: list[dict] | None = None,
+                    voces: dict[str, str] | None = None) -> InformePleno:
     fuentes = f"{len(transcripcion):,} caracteres de transcripción"
     if convocatoria:
         fuentes += f" + convocatoria ({len(convocatoria) // 1024} KB)"
     _log(f"  → GENERADOR ({fuentes})")
     informe = _llamar_llm(PROMPT_GENERADOR,
-                          f"{bloque_intervinientes(intervinientes)}"
+                          f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}"
                           f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}",
                              InformePleno, convocatoria, "generador")
     resolutiva = sum(1 for p in informe.orden_del_dia if p.parte == "resolutiva")
@@ -1176,14 +1256,15 @@ def generar_informe(transcripcion: str, convocatoria: bytes | None = None,
 def auditar_informe(transcripcion: str, informe: InformePleno,
                     convocatoria: bytes | None = None,
                     rutas_tocadas: list[str] | None = None,
-                    intervinientes: list[dict] | None = None) -> AuditoriaInforme:
+                    intervinientes: list[dict] | None = None,
+                    voces: dict[str, str] | None = None) -> AuditoriaInforme:
     # El auditor recibe la convocatoria (como CORPORACION): sin ella marcaría los títulos
     # del orden del día como no respaldados. `rutas_tocadas` es solo una pista de dónde
     # mirar primero; sigue auditando el informe entero.
     _log("  → AUDITOR (busca afirmaciones que la transcripción no respalde"
          + (f"; {_plural(len(rutas_tocadas), 'campo recién tocado', 'campos recién tocados')})"
             if rutas_tocadas else ")"))
-    contenido = (f"{bloque_intervinientes(intervinientes)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
     if rutas_tocadas:
         contenido += ("\n\nCAMPOS QUE ACABA DE MODIFICAR EL CORRECTOR:\n"
@@ -1202,10 +1283,11 @@ def auditar_informe(transcripcion: str, informe: InformePleno,
 
 def auditar_atribuciones(transcripcion: str, informe: InformePleno,
                          convocatoria: bytes | None = None,
-                         intervinientes: list[dict] | None = None) -> AuditoriaInforme:
+                         intervinientes: list[dict] | None = None,
+                         voces: dict[str, str] | None = None) -> AuditoriaInforme:
     """Auditoría con una sola pregunta: ¿lo dijo quien el informe dice? (PROMPT_ATRIBUCIONES)."""
     _log("  → AUDITOR DE ATRIBUCIONES (¿lo dijo quien el informe dice?)")
-    contenido = (f"{bloque_intervinientes(intervinientes)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
     auditoria = _llamar_llm(PROMPT_ATRIBUCIONES, contenido, AuditoriaInforme,
                             None, "atribuciones", MODELO_AUDITOR)
@@ -1221,10 +1303,11 @@ def auditar_atribuciones(transcripcion: str, informe: InformePleno,
 
 def corregir_informe(transcripcion: str, informe: InformePleno, problemas: list[Problema],
                      convocatoria: bytes | None = None,
-                     intervinientes: list[dict] | None = None) -> InformePleno:
+                     intervinientes: list[dict] | None = None,
+                     voces: dict[str, str] | None = None) -> InformePleno:
     probs = "\n".join(f"- [{p.seccion}] {p.afirmacion_dudosa} → {p.motivo} (evidencia: {p.evidencia})"
                       for p in problemas)
-    contenido = (f"{bloque_intervinientes(intervinientes)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME COMPLETO (JSON):\n\n{informe.model_dump_json()}\n\n"
                  f"PROBLEMAS DETECTADOS POR EL AUDITOR:\n{probs}")
     _log(f"  → CORRECTOR ({_plural(len(problemas), 'objeción', 'objeciones')} que resolver)")
@@ -1443,7 +1526,8 @@ def restaurar_recuentos(antes: InformePleno, despues: InformePleno):
 
 def bucle_informe(transcripcion: str, convocatoria: bytes | None = None,
                   generar=None, auditar=None, corregir=None,
-                  intervinientes: list[dict] | None = None, atribuciones=None):
+                  intervinientes: list[dict] | None = None, atribuciones=None,
+                  voces: dict[str, str] | None = None):
     """Generador → auditor → (corrector → auditor)* con tope MAX_VUELTAS.
 
     `convocatoria` (bytes del PDF o None) e `intervinientes` ([{'nombre', 'apodos'}] o
@@ -1457,6 +1541,8 @@ def bucle_informe(transcripcion: str, convocatoria: bytes | None = None,
     rutas_tocadas: list[str] = []
     # Solo si los hay, para no cambiar la firma de los fakes.
     extra = {"intervinientes": intervinientes} if intervinientes else {}
+    if voces:
+        extra["voces"] = voces
     generar = generar or (lambda t: generar_informe(t, convocatoria, **extra))
     auditar = auditar or (lambda t, i: auditar_informe(t, i, convocatoria, rutas_tocadas,
                                                        **extra))

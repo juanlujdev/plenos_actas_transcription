@@ -273,6 +273,8 @@ bloqueado y 0 en cuanto se libere.
 
 El asistente acepta un archivo arrastrado donde pide la URL y pregunta si el pleno es
 ordinario o extraordinario (decide la carpeta). Ver [[pleno-en-varias-grabaciones-y-mismo-dia]].
+Tras transcribir, se detiene a pedir a la secretaria que confirme quién es cada voz: ver
+[[voces-confirmadas-por-la-secretaria]]. El LÉEME (`asistente/LEEME.txt`) lo explica en el apartado 5.
 
 ## Relacionado
 

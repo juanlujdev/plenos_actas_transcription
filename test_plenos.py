@@ -1368,7 +1368,7 @@ finally:
         os.environ["ACTAS_DIR"] = _actas_previo
 
 # Un extraordinario y un ordinario del mismo día no pueden compartir carpeta.
-test("ordinaria: la carpeta es la fecha", _pp.clave_pleno("2026-10-07", "ordinaria"), "2026-10-07")
+test("ordinaria: la carpeta lo dice", _pp.clave_pleno("2026-10-07", "ordinaria"), "2026-10-07-ordinario")
 test("sin tipo: la carpeta es la fecha", _pp.clave_pleno("2026-10-07"), "2026-10-07")
 test("extraordinaria: carpeta distinta el mismo día",
      _pp.clave_pleno("2026-10-07", "extraordinaria"), "2026-10-07-extraordinario")
@@ -2753,6 +2753,36 @@ test("bucle: el recuento borrado por el corrector se restaura",
      (_inf_f.orden_del_dia[0].votacion.a_favor, _inf_f.orden_del_dia[0].votacion.en_contra), (3, 4))
 test("bucle: el aviso llega a los pendientes",
      _pend_f[-1].evidencia, "(comprobación automática de recuentos)")
+
+
+print()
+print("── voces confirmadas por la secretaría ───────────────────────────────")
+from plenos_informe import (VOZ_MEZCLADA, VOZ_PUBLICO, aplicar_voces, bloque_voces,
+                            muestras_por_etiqueta)
+
+_t_voces = "\n".join(
+    f"[00:{i:02d}:00] Interviniente {'A' if i % 2 else 'B'}: " + " ".join(["palabra"] * 10) + f" {i}"
+    for i in range(1, 21)) + "\n[00:30:00] Interviniente C: sí\n"
+_m = muestras_por_etiqueta(_t_voces, n=4)
+test("muestras: una entrada por etiqueta", sorted(_m), ["A", "B", "C"])
+test("muestras: cuenta las intervenciones", _m["A"][0], 10)
+test("muestras: n frases", len(_m["A"][1]), 4)
+test("muestras: repartidas, no las primeras",
+     (_m["A"][1][0][0], _m["A"][1][-1][0]), ("00:01:00", "00:19:00"))
+test("muestras: una etiqueta de una sola frase corta aún sale", _m["C"][1], [("00:30:00", "sí")])
+
+test("sin voces no hay bloque", bloque_voces(None), "")
+_bv = bloque_voces({"B": "Dª Lorena Luján Chujfi", "F": VOZ_PUBLICO, "C": VOZ_MEZCLADA})
+test("bloque: nombre de la persona", "Interviniente B: Dª Lorena Luján Chujfi" in _bv, True)
+test("bloque: público", "Interviniente F: público asistente" in _bv, True)
+test("bloque: mezclada no atribuye identidad", "ninguna identidad" in _bv, True)
+
+_inf_v = aplicar_voces(_informe_v1, {"B": "Dª Lorena Luján Chujfi", "C": VOZ_MEZCLADA})
+_mapa = {v.etiqueta: v for v in _inf_v.identificacion_locutores}
+test("aplicar: la confirmada entra en el mapa", _mapa["B"].persona, "Dª Lorena Luján Chujfi")
+test("aplicar: con su evidencia", "Confirmada por la secretaría" in _mapa["B"].evidencia, True)
+test("aplicar: mezclada", _mapa["C"].persona, VOZ_MEZCLADA)
+test("aplicar sin voces no toca nada", aplicar_voces(_informe_v1, None), _informe_v1)
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────

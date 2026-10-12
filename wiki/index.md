@@ -38,6 +38,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[por-que-plenos-en-local]] | Por qué se construyó y luego se borró toda la automatización del pipeline | 2026-08-22 |
 | [[speaker-identification-descartado]] | Por qué la identificación de voces la hace el generador con cita y timestamp, y no el add-on de AssemblyAI | 2026-09-09 |
 | [[pleno-en-varias-grabaciones-y-mismo-dia]] | Un pleno en dos vídeos (unir el audio a mano, receta y trampas de YouTube) y un extraordinario el mismo día que un ordinario (la carpeta lleva el tipo) | 2026-10-10 |
+| [[voces-confirmadas-por-la-secretaria]] | La secretaria confirma en el asistente quién es cada voz (frases repartidas, minuto y enlace); vale como prueba, a diferencia de los intervinientes | 2026-10-12 |
 | [[intervinientes-y-reglas-tras-el-7-x]] | Qué falló en el acta del 3-IX según las quejas del 7-X y qué reglas, prompts y código se tocaron; por qué los intervinientes son pista y no prueba | 2026-10-10 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
 | [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-15 |
