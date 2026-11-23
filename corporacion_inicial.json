@@ -1,0 +1,89 @@
+{
+  "miembros": [
+    {
+      "nombre": "Sergio de Fez Cerezuela",
+      "sexo": "hombre",
+      "cargo": "alcalde",
+      "orden_teniente": null,
+      "partido": "PSOE",
+      "grupo": "gobierno",
+      "apodos": [],
+      "observacion": "",
+      "situacion": "de baja médica"
+    },
+    {
+      "nombre": "Lorena Luján Chujfi",
+      "sexo": "mujer",
+      "cargo": "teniente",
+      "orden_teniente": 2,
+      "partido": "PSOE",
+      "grupo": "gobierno",
+      "apodos": [],
+      "observacion": "",
+      "situacion": ""
+    },
+    {
+      "nombre": "Mª Rosario Cerdán Pérez",
+      "sexo": "mujer",
+      "cargo": "concejal",
+      "orden_teniente": null,
+      "partido": "PSOE",
+      "grupo": "gobierno",
+      "apodos": ["Chari"],
+      "observacion": "Es ADEMÁS la presidenta de la Asociación de Jubilados, y en el turno de ruegos interviene sobre asuntos de esa asociación. Una voz que dice presidir la Asociación de Jubilados es ELLA, una concejala: no es público asistente. Si ella misma invoca esa condición puede hacerse constar (\"Dª Mª Rosario Cerdán Pérez, en su condición de presidenta de la Asociación de Jubilados, ruega que...\"). No confundirla con los socios de esa asociación que asisten como público y también hablan de sus asuntos: esos sí son vecinos.",
+      "situacion": ""
+    },
+    {
+      "nombre": "Mario Cerdán Ochoa",
+      "sexo": "hombre",
+      "cargo": "concejal",
+      "orden_teniente": null,
+      "partido": "PSOE",
+      "grupo": "gobierno",
+      "apodos": [],
+      "observacion": "",
+      "situacion": ""
+    },
+    {
+      "nombre": "Joaquín Martínez Luján",
+      "sexo": "hombre",
+      "cargo": "concejal",
+      "orden_teniente": null,
+      "partido": "PP",
+      "grupo": "oposicion",
+      "apodos": ["Joaquín"],
+      "observacion": "",
+      "situacion": ""
+    },
+    {
+      "nombre": "Pedro José Martínez Martínez",
+      "sexo": "hombre",
+      "cargo": "concejal",
+      "orden_teniente": null,
+      "partido": "PP",
+      "grupo": "oposicion",
+      "apodos": ["Pedro", "Macario"],
+      "observacion": "",
+      "situacion": ""
+    },
+    {
+      "nombre": "Fernando Pons Mayor",
+      "sexo": "hombre",
+      "cargo": "concejal",
+      "orden_teniente": null,
+      "partido": "Agrupación Independiente de Enguídanos",
+      "grupo": "oposicion",
+      "apodos": ["Fernando", "Nando"],
+      "observacion": "",
+      "situacion": ""
+    }
+  ],
+  "secretaria": {
+    "nombre": "Mª Elena Valera Navarro",
+    "sexo": "mujer"
+  },
+  "presidencia": {
+    "persona": "Lorena Luján Chujfi",
+    "motivo": "delegacion"
+  }
+}

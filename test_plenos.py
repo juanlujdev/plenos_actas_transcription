@@ -2785,6 +2785,60 @@ test("aplicar: mezclada", _mapa["C"].persona, VOZ_MEZCLADA)
 test("aplicar sin voces no toca nada", aplicar_voces(_informe_v1, None), _informe_v1)
 
 
+print("── corporación configurable ──────────────────────────────────")
+import corporacion as _co
+_s = _co.semilla()
+test("semilla: 8 personas (7 miembros + secretaria)", (len(_s.miembros), _s.secretaria.nombre),
+     (7, "Mª Elena Valera Navarro"))
+test("semilla: alcalde", _s.alcalde().nombre, "Sergio de Fez Cerezuela")
+test("semilla: preside Lorena por delegación",
+     (_s.quien_preside().nombre, _s.presidencia.motivo), ("Lorena Luján Chujfi", "delegacion"))
+test("semilla: Chari con su observación",
+     "Asociación de Jubilados" in next(p for p in _s.miembros if "Chari" in p.apodos).observacion, True)
+
+def _sin(corp, nombre):
+    return corp.model_dump() | {"miembros": [p.model_dump() for p in corp.miembros if p.nombre != nombre]}
+
+def _errores(datos):
+    try:
+        _co.Corporacion.model_validate(datos); return []
+    except Exception as e:
+        return _co.errores_legibles(e)
+
+test("validación: sin alcalde no vale",
+     any("Alcalde o Alcaldesa" in e for e in _errores(_sin(_s, "Sergio de Fez Cerezuela"))), True)
+test("validación: preside alguien que no es miembro",
+     any("preside" in e for e in _errores(_sin(_s, "Lorena Luján Chujfi"))), True)
+_dos_alc = _s.model_dump(); _dos_alc["miembros"][2]["cargo"] = "alcalde"
+test("validación: dos alcaldes no vale", bool(_errores(_dos_alc)), True)
+_titular_no_alc = _s.model_dump(); _titular_no_alc["presidencia"]["motivo"] = "titular"
+test("validación: 'titular' solo para el alcalde", bool(_errores(_titular_no_alc)), True)
+_concejal_preside = _s.model_dump(); _concejal_preside["presidencia"]["persona"] = "Mario Cerdán Ochoa"
+test("validación: por delegación preside un teniente", bool(_errores(_concejal_preside)), True)
+_ten_rep = _s.model_dump(); _ten_rep["miembros"][3].update(cargo="teniente", orden_teniente=2)
+test("validación: número de teniente repetido", bool(_errores(_ten_rep)), True)
+
+import tempfile as _tf
+from pathlib import Path as _Path
+_dir = _Path(_tf.mkdtemp())
+_co.guardar(_s, _dir / "corporacion.json")
+_co.guardar(_s, _dir / "corporacion.json")
+test("guardar: la segunda vez deja copia en historial",
+     len(list((_dir / "historial").glob("corporacion-*.json"))), 1)
+os.environ["CORPORACION_JSON"] = str(_dir / "corporacion.json")
+test("cargar: lee la vigente", _co.cargar(), _s)
+(_dir / "corporacion.json").write_text("{roto", encoding="utf-8")
+try:
+    _co.cargar(); _msg = ""
+except _co.ErrorCorporacion as e:
+    _msg = str(e)
+test("cargar: fichero corrupto → ErrorCorporacion legible", "corporación" in _msg.lower(), True)
+del os.environ["CORPORACION_JSON"]
+test("cargar: sin CORPORACION_JSON usa la semilla", _co.cargar(), _s)
+_co.usar(_s)
+test("en_uso: devuelve la fijada", _co.en_uso() is _s, True)
+
+
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
 if _failures:
