@@ -13,8 +13,11 @@ pyinstaller --onefile --console --noconfirm `
     --specpath (Join-Path $raiz "build") `
     --paths $raiz `
     --add-data "$(Join-Path $raiz 'plantillas');plantillas" `
+    --add-data "$(Join-Path $raiz 'corporacion_inicial.json');." `
     --hidden-import plenos_informe `
     --hidden-import plenos_acta `
+    --hidden-import corporacion `
+    --hidden-import costes `
     --exclude-module matplotlib `
     --exclude-module IPython `
     --exclude-module rich `

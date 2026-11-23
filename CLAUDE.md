@@ -68,9 +68,10 @@ reconstruirlo con `construir_exe.ps1` es parte del cambio, siempre.** PyInstalle
 el código, así que un script tocado y un `.exe` sin reconstruir hacen que la funcionaria
 pruebe la versión anterior y su feedback no sirva. Las claves de API del ejecutable van
 en `Configuración (no tocar)/configuracion.env` (junto al `.exe`), no en variables de
-entorno del sistema, para poder cambiarlas sin reconstruirlo. `ACTAS_DIR` y `YT_DLP_EXE`
-son las dos variables de entorno que redirigen el pipeline fuera del repo (carpeta de
-borradores y binario de yt-dlp, respectivamente); sin definirlas, el flujo del
+entorno del sistema, para poder cambiarlas sin reconstruirlo. `ACTAS_DIR`, `YT_DLP_EXE`,
+`CORPORACION_JSON` y `PLANTILLAS_PROPIAS` son las variables de entorno que redirigen el
+pipeline fuera del repo (carpeta de borradores, binario de yt-dlp, corporación editable y
+carpeta de plantillas propias); sin definirlas, el flujo del
 desarrollador no cambia. Detalle de cada decisión en
 `wiki/concepts/asistente-para-la-funcionaria.md`.
 
@@ -79,6 +80,9 @@ desarrollador no cambia. Detalle de cada decisión en
 ```
 procesar_pleno.py     ← orquestación y CLI: --url | --audio | --rehacer-informe | --rehacer-acta
 plenos_informe.py     ← esquemas pydantic + los 3 prompts + bucle LLM
+corporacion.py        ← modelo de la corporación, textos derivados, en_uso/usar
+corporacion_inicial.json ← semilla inmutable (corporación histórica)
+costes.py             ← coste habitual y real de cada pleno
 plenos_acta.py        ← InformePleno → .docx sobre la plantilla oficial (sin LLM)
 quejas_pleno.py       ← casos de queja de plenos pasados contra su informe.json (local)
 plenos_guia.py        ← InformePleno + transcripción → guía de verificación .html
@@ -106,7 +110,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   `plenos_informe.DIARIZACION` se lo dice a los tres roles: misma etiqueta = misma
   persona, y basta con que la grabación identifique a esa etiqueta UNA vez para
   atribuirle toda la sesión; si no se identifica nunca, sigue siendo "no identificado en
-  la grabación". Va también al auditor por el mismo motivo que `CORPORACION`: si no,
+  la grabación". Va también al auditor por el mismo motivo que la corporación: si no,
   marcaría cada atribución propagada como afirmación no respaldada y quemaría las vueltas.
 - **Los nombres se corrigen ya en la transcripción, no solo en los prompts.**
   `keyterms_del_pleno` (nombres de la corporación + `AAI_VOCABULARIO`), `aai_prompt(corp)`
@@ -119,19 +123,35 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
 - **Nada de webhooks**: el payload de AssemblyAI solo trae `transcript_id` y `status` (hay
   que hacer el GET igual) y exige un endpoint público que conteste 2xx en 10 s. Esto corre
   en tu PC, así que se sondea cada 20 s.
-- **Los nombres propios los deforma Whisper.** `plenos_informe.CORPORACION` lleva el
-  listado de la corporación para que el generador los escriba bien — y el auditor
-  también lo recibe, porque si no marcaría esas correcciones como afirmaciones no
-  respaldadas y el bucle daría vueltas inútiles. Actualizar tras cada elección municipal.
-- **El cargo no es el papel que se juega en la sesión.** `plenos_informe.PRESIDENCIA`
-  fija cómo se nombra a quien preside, en el encabezado y en cada intervención; de ahí
-  sale también el género de las fórmulas fijas ("verificada por la Secretaria… la
-  Presidenta abre la sesión"). Revisarlo cada vez que cambie quién preside. Hoy
-  Sergio de Fez Cerezuela sigue siendo **el Alcalde** pese a la baja médica, y Lorena
-  Luján Chujfi preside como **Segunda Teniente de Alcalde por delegación de funciones**:
-  NO es "Alcaldesa en funciones", que es un cargo que nadie le ha dado, y llamarla así
-  en un documento que se sella es un error de fondo, no de estilo. Cuando el Alcalde
-  asiste sin presidir, interviene como un concejal más.
+- **La corporación es un dato, no código: `corporacion.py`.** Modelo pydantic con
+  alcalde, concejales, secretaria, quién preside y apodos; la semilla
+  `corporacion_inicial.json` es la corporación histórica (antes de la moción), **no se
+  edita nunca**. El asistente (opción 3) trabaja sobre una copia en `Configuración (no
+  tocar)` y exporta su ruta en `CORPORACION_JSON`; sin esa variable el CLI usa la semilla.
+  Cada pleno guarda en `entrada.json` la corporación con la que se procesó
+  (`corporacion_del_pleno`; sin ella cae a la semilla), así que `--rehacer-*` no cambia
+  si luego se edita la corporación. Los prompts son estáticos: la corporación viaja en el
+  mensaje (`cabecera_mensaje` + `bloque_corporacion`; reglas en `REGLAS_CORPORACION`) a
+  los cuatro roles, auditor incluido, porque si no marcaría los nombres corregidos como
+  afirmaciones no respaldadas y el bucle daría vueltas inútiles. Whisper deforma los
+  nombres propios; actualizar la corporación tras cada elección o cambio de presidencia.
+- **El cargo no es el papel que se juega en la sesión.** `corporacion.formula_presidencia`
+  y derivados fijan cómo se nombra a quien preside (encabezado, intervenciones, «Presidida
+  por», género de las fórmulas fijas). Con la semilla, Sergio de Fez Cerezuela sigue siendo
+  **el Alcalde** y Lorena Luján Chujfi preside como **Segunda Teniente de Alcalde por
+  delegación de funciones**: NO es «Alcaldesa en funciones», cargo que nadie le ha dado, y
+  llamarla así en un documento que se sella es un error de fondo. `normalizar_cargos`
+  solo actúa si `hay_alcaldesa` es falso; si la corporación sí tiene Alcaldesa titular, se
+  respeta el cargo. El cierre usa siempre el tratamiento de la presidencia. Cuando el
+  Alcalde asiste sin presidir, interviene como un concejal más.
+- **Las plantillas `.docx` se pueden sustituir desde el asistente** (`PLANTILLAS_PROPIAS`
+  apunta a la carpeta). Una plantilla nueva se valida renderizando un acta de prueba
+  (`validar_plantilla`), no mirando su estructura: lo que importa es que `render_acta` la
+  rellene.
+- **Costes: `costes.py`.** El asistente muestra el coste habitual y el real de cada pleno.
+  Un coste que la API no devuelve se muestra «no disponible» y no entra en el promedio (no
+  se cuenta como 0,00 $). No se consulta el saldo de AssemblyAI/OpenRouter: la primera no
+  tiene API de saldo y la segunda exige management key.
 - **El acta no reparte los puntos en A) resolutiva / B) control / C) ruegos.** La
   plantilla oficial trae esas tres bandas, pero el acta que la secretaría firma numera
   los puntos como vienen en el orden del día y los escribe seguidos bajo un único
@@ -148,7 +168,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   `wiki/concepts/pleno-en-varias-grabaciones-y-mismo-dia.md`.
 - **Las voces las confirma la secretaria, y eso sí es prueba.** Tras transcribir, el asistente
   se detiene (`preguntar_voces`): por etiqueta, 5 frases repartidas por la sesión con minuto
-  (y enlace si hay YouTube) y a elegir entre `PERSONAS_VOZ`, público, «varias personas» o
+  (y enlace si hay YouTube) y a elegir entre `corporacion.personas_voz`, público, «varias personas» o
   «no lo sé». Van a `entrada.json` (`voces`), a los cuatro roles (`bloque_voces`) y, al
   acabar el bucle, al mapa de voces (`aplicar_voces`). `--rehacer-informe` las reutiliza.
   Detalle en `wiki/concepts/voces-confirmadas-por-la-secretaria.md`.
@@ -157,7 +177,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   interviene y los apodos de ESE pleno (`Chari`, `Nando`). Van a `entrada.json`, a los
   keyterms de AssemblyAI (`keyterms_del_pleno`) y al mensaje de generador, auditor y
   corrector (`bloque_intervinientes`; reglas en `INTERVINIENTES_SESION`). Se contrastan con
-  `CORPORACION`, que sigue mandando en cargos y tratamientos; NO prueban asistencia ni
+  la corporación, que sigue mandando en cargos y tratamientos; NO prueban asistencia ni
   rellenan el mapa de voces (la etiqueta se identifica con cita literal), y un apodo de dos
   personas no identifica a ninguna. Es el mismo razonamiento de
   `wiki/concepts/speaker-identification-descartado.md`: una lista de nombres empuja a
@@ -173,7 +193,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   podando la crítica política: la 16 quater solo cubre lo personal.
 - **«Alcaldesa» no llega nunca al acta, ni por el modelo ni por una vecina.** Además de los
   prompts, `plenos_acta.normalizar_cargos` sustituye «la (Sra.) alcaldesa (en funciones…)»
-  por `PRESIDENCIA["tratamiento"]` fuera de comillas, como `comillas()` garantiza la
+  por `corporacion.tratamiento_presidencia` fuera de comillas, como `comillas()` garantiza la
   tipografía. Dentro de comillas se respeta: es una cita (la Teniente de Alcalde lamenta el
   uso de «alcaldesa accidental»). Lo pidió Fernando Pons: una sola forma para Lorena.
 - **Lo que una regla de código puede comprobar no se le confía al auditor.**
@@ -300,7 +320,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
 - **La convocatoria (`--convocatoria`) va al auditor además del generador.** Si solo la
   viera el generador, el auditor buscaría en la transcripción los títulos tomados del
   orden del día, encontraría el destrozo de Whisper y los marcaría como no respaldados,
-  quemando las tres vueltas. Mismo motivo que `CORPORACION`.
+  quemando las tres vueltas. Mismo motivo que la corporación.
 - **La convocatoria manda en la forma, la grabación en el fondo.** De la convocatoria
   salen títulos, numeración, expedientes y tipo de sesión; qué se debatió y qué se votó
   sale solo del audio. Un punto convocado del que la grabación no habla NO se redacta:

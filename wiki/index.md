@@ -42,6 +42,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[intervinientes-y-reglas-tras-el-7-x]] | Qué falló en el acta del 3-IX según las quejas del 7-X y qué reglas, prompts y código se tocaron; por qué los intervinientes son pista y no prueba | 2026-10-10 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
 | [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-15 |
+| [[corporacion-configurable]] | La corporación, la presidencia y las plantillas como datos editables desde el asistente: semilla inmutable, corporación en el mensaje, validación por render | 2026-11-23 |
 
 ## Síntesis
 

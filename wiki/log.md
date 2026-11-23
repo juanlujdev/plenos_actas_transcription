@@ -302,3 +302,5 @@ pregunta quién es cada voz (`preguntar_voces`) y las inyecta como prueba en los
 Se quitó y se volvió a poner el mismo día; tras probarla se decide conservarla. LÉEME
 (`asistente/LEEME.txt`) actualizado con el tipo de pleno, el archivo local y las voces;
 entrega nueva completa a la secretaria. CLAUDE.md actualizado.
+
+## [2026-11-23] decisión | Corporación, presidencia y plantillas configurables
