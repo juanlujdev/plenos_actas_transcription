@@ -80,7 +80,8 @@
   ],
   "secretaria": {
     "nombre": "Mª Elena Valera Navarro",
-    "sexo": "mujer"
+    "sexo": "mujer",
+    "apodos": ["Elena"]
   },
   "presidencia": {
     "persona": "Lorena Luján Chujfi",

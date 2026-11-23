@@ -2838,6 +2838,51 @@ test("cargar: sin CORPORACION_JSON usa la semilla", _co.cargar(), _s)
 _co.usar(_s)
 test("en_uso: devuelve la fijada", _co.en_uso() is _s, True)
 
+print("── textos derivados de la corporación ────────────────────────")
+test("fórmula de presidencia de la semilla = la de hoy", _co.formula_presidencia(_s),
+     "la segunda Teniente Alcalde Dª Lorena Luján Chujfi, que actúa en virtud de la "
+     "delegación de funciones efectuadas por el Sr. Alcalde – Presidente, D. Sergio de Fez Cerezuela")
+test("tratamiento de la semilla", _co.tratamiento_presidencia(_s), "la Sra. Teniente de Alcalde")
+test("apertura y secretaria en femenino", (_co.abre_la_sesion(_s), _co.la_secretaria(_s)),
+     ("la Presidenta abre la sesión", "la Secretaria"))
+test("cargo de la secretaria con raya", _co.cargo_secretaria(_s), "Secretaria – Interventora")
+test("etiqueta de la secretaria", _co.etiqueta_secretaria(_s), "Secretaria")
+test("con_tratamiento", (_co.con_tratamiento(_s.miembros[3]), _co.con_tratamiento(_s.miembros[1])),
+     ("D. Mario Cerdán Ochoa", "Dª Lorena Luján Chujfi"))
+test("cargo_en_texto", [_co.cargo_en_texto(p) for p in (_s.miembros[0], _s.miembros[1], _s.miembros[2], _s.miembros[3])],
+     ["Alcalde", "segunda Teniente de Alcalde", "Concejala", "Concejal"])
+
+_alcaldesa = _s.model_copy(deep=True)
+_alcaldesa.miembros[2].cargo, _alcaldesa.miembros[0].cargo = "alcalde", "concejal"
+_alcaldesa.presidencia = _co.Presidencia(persona=_alcaldesa.miembros[2].nombre, motivo="titular")
+_alcaldesa = _co.Corporacion.model_validate(_alcaldesa.model_dump())
+test("titular mujer", (_co.formula_presidencia(_alcaldesa), _co.tratamiento_presidencia(_alcaldesa)),
+     ("la Sra. Alcaldesa – Presidenta, Dª Mª Rosario Cerdán Pérez", "la Sra. Alcaldesa"))
+test("hay_alcaldesa", (_co.hay_alcaldesa(_s), _co.hay_alcaldesa(_alcaldesa)), (False, True))
+_aus = _s.model_copy(update={"presidencia": _co.Presidencia(persona="Lorena Luján Chujfi", motivo="ausencia")})
+test("ausencia (redacción provisional)", _co.formula_presidencia(_aus),
+     "la segunda Teniente Alcalde Dª Lorena Luján Chujfi, en sustitución del Sr. Alcalde – "
+     "Presidente, D. Sergio de Fez Cerezuela, por ausencia")
+
+_b = _co.bloque_corporacion(_s)
+test("bloque: avisa de los dos Martínez (calculado)",
+     "son DOS personas distintas que comparten apellido" in _b and "Martínez" in _b, True)
+test("bloque: lleva la observación de Chari", "Asociación de Jubilados" in _b, True)
+test("bloque: dice quién preside y cómo se le nombra", "la Sra. Teniente de Alcalde" in _b, True)
+test("bloque: la secretaria no vota ni va en asistentes",
+     "nunca va en `asistentes` ni en `ausentes`" in _b, True)
+test("bloque: prohíbe llamar Alcaldesa a quien preside sin ser titular",
+     "NUNCA se la nombra así" in _b, True)
+test("bloque con alcaldesa titular no prohíbe Alcaldesa",
+     "NUNCA se la nombra así" in _co.bloque_corporacion(_alcaldesa), False)
+test("voces: mismo formato que PERSONAS_VOZ",
+     _co.personas_voz(_s)[0], ("Dª Lorena Luján Chujfi", "Lorena Luján Chujfi (preside)", ""))
+test("voces: incluye a la secretaria al final",
+     _co.personas_voz(_s)[-1][1], "Mª Elena Valera Navarro (Secretaria)")
+test("voces: apodos de la secretaria", _co.personas_voz(_s)[-1][2], "Elena")
+test("keyterms: nombres y apodos", {"Fernando Pons Mayor", "Chari", "Nando", "Elena"} <= set(_co.nombres_y_apodos(_s)), True)
+test("resumen: una línea por miembro y la secretaria", len(_co.resumen(_s)), 8)
+
 
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()

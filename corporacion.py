@@ -29,6 +29,7 @@ class Persona(BaseModel):
 class Secretaria(BaseModel):
     nombre: str
     sexo: Literal["hombre", "mujer"]
+    apodos: list[str] = []
 
 
 class Presidencia(BaseModel):
@@ -121,3 +122,192 @@ def en_uso() -> Corporacion:
     if _en_uso is None:
         usar(cargar())
     return _en_uso
+
+
+_ORDINALES = {
+    "hombre": {1: "primer", 2: "segundo", 3: "tercer", 4: "cuarto", 5: "quinto"},
+    "mujer": {1: "primera", 2: "segunda", 3: "tercera", 4: "cuarta", 5: "quinta"},
+}
+
+
+def _por_sexo(p: Persona | Secretaria, masculino: str, femenino: str) -> str:
+    return masculino if p.sexo == "hombre" else femenino
+
+
+def con_tratamiento(p: Persona | Secretaria) -> str:
+    return f"{_por_sexo(p, 'D.', 'Dª')} {p.nombre}"
+
+
+def cargo_en_texto(p: Persona) -> str:
+    if p.cargo == "alcalde":
+        return _por_sexo(p, "Alcalde", "Alcaldesa")
+    if p.cargo == "teniente":
+        return f"{_ORDINALES[p.sexo][p.orden_teniente]} Teniente de Alcalde"
+    return _por_sexo(p, "Concejal", "Concejala")
+
+
+def _titular(p: Persona) -> str:
+    return (f"{_por_sexo(p, 'el Sr.', 'la Sra.')} {_por_sexo(p, 'Alcalde', 'Alcaldesa')} – "
+            f"{_por_sexo(p, 'Presidente', 'Presidenta')}, {con_tratamiento(p)}")
+
+
+def formula_presidencia(corp: Corporacion) -> str:
+    preside = corp.quien_preside()
+    if corp.presidencia.motivo == "titular":
+        return _titular(preside)
+    teniente = (f"{_por_sexo(preside, 'el', 'la')} {_ORDINALES[preside.sexo][preside.orden_teniente]} "
+                f"Teniente Alcalde {con_tratamiento(preside)}")
+    alcalde = corp.alcalde()
+    if corp.presidencia.motivo == "delegacion":
+        return (f"{teniente}, que actúa en virtud de la delegación de funciones efectuadas por "
+                f"{_titular(alcalde)}")
+    del_alcalde = _titular(alcalde).replace("el Sr.", "del Sr.", 1).replace("la Sra.", "de la Sra.", 1)
+    return f"{teniente}, en sustitución {del_alcalde}, por ausencia"
+
+
+def tratamiento_presidencia(corp: Corporacion) -> str:
+    preside = corp.quien_preside()
+    cargo = _por_sexo(preside, "Alcalde", "Alcaldesa") if corp.presidencia.motivo == "titular" else "Teniente de Alcalde"
+    return f"{_por_sexo(preside, 'el Sr.', 'la Sra.')} {cargo}"
+
+
+def abre_la_sesion(corp: Corporacion) -> str:
+    return f"{_por_sexo(corp.quien_preside(), 'el Presidente', 'la Presidenta')} abre la sesión"
+
+
+def etiqueta_secretaria(corp: Corporacion) -> str:
+    return _por_sexo(corp.secretaria, "Secretario", "Secretaria")
+
+
+def la_secretaria(corp: Corporacion) -> str:
+    return f"{_por_sexo(corp.secretaria, 'el', 'la')} {etiqueta_secretaria(corp)}"
+
+
+def cargo_secretaria(corp: Corporacion) -> str:
+    return f"{etiqueta_secretaria(corp)} – {_por_sexo(corp.secretaria, 'Interventor', 'Interventora')}"
+
+
+def hay_alcaldesa(corp: Corporacion) -> bool:
+    return corp.alcalde().sexo == "mujer"
+
+
+def _ordenados(corp: Corporacion) -> list[Persona]:
+    preside = corp.quien_preside()
+    resto = [p for p in corp.miembros if p is not preside]
+    alcalde = [p for p in resto if p.cargo == "alcalde"]
+    tenientes = sorted((p for p in resto if p.cargo == "teniente"), key=lambda p: p.orden_teniente)
+    concejales = [p for p in resto if p.cargo == "concejal"]
+    return [preside, *alcalde, *tenientes, *concejales]
+
+
+def _primer_apellido(p: Persona) -> str:
+    return p.nombre.split()[-2]
+
+
+def _linea_miembro(p: Persona) -> str:
+    cargo = cargo_en_texto(p)
+    cargo = cargo.upper() if p.cargo != "concejal" else cargo
+    grupo = "equipo de gobierno" if p.grupo == "gobierno" else "oposición"
+    if p.cargo == "concejal":
+        linea = f"- {p.nombre} — {cargo}, {grupo} ({p.partido})"
+    else:
+        linea = f"- {p.nombre} — {cargo} ({p.partido}), {grupo}"
+    if p.situacion:
+        linea += f", {p.situacion}"
+    if p.observacion:
+        linea += "\n  " + p.observacion
+    return linea
+
+
+def _parrafo_presidencia(corp: Corporacion) -> str:
+    preside, alcalde = corp.quien_preside(), corp.alcalde()
+    trato = tratamiento_presidencia(corp)
+    se_nombra = f"En el acta se {_por_sexo(preside, 'le', 'la')} nombra \"{trato}\", o {con_tratamiento(preside)}."
+    if corp.presidencia.motivo == "titular":
+        return f"PRESIDENCIA: {preside.nombre} preside las sesiones como {cargo_en_texto(preside)} titular. {se_nombra}"
+    el_alcalde = _por_sexo(alcalde, "el Sr. Alcalde", "la Sra. Alcaldesa")
+    if corp.presidencia.motivo == "delegacion":
+        lineas = [f"PRESIDENCIA: {preside.nombre} preside las sesiones en virtud de la delegación de "
+                  f"funciones efectuada por {el_alcalde}-{_por_sexo(alcalde, 'Presidente', 'Presidenta')}."]
+    else:
+        lineas = [f"PRESIDENCIA: {preside.nombre} preside en sustitución de {el_alcalde}, por ausencia."]
+    if hay_alcaldesa(corp):
+        lineas.append(se_nombra)
+    else:
+        cargo = _por_sexo(preside, "Alcalde", "Alcaldesa")
+        lineas.append(f"NO es {cargo} ni {cargo} en funciones y NUNCA se {_por_sexo(preside, 'le', 'la')} "
+                      f"nombra así en el acta: es {trato}, o {con_tratamiento(preside)}.")
+    lineas.append(f"Sigue siendo {el_alcalde} a todos los efectos: es \"{el_alcalde} {con_tratamiento(alcalde)}\". "
+                  f"Cuando asiste a la sesión e interviene en el debate sin presidirla, lo hace como "
+                  f"{_por_sexo(alcalde, 'un concejal más', 'una concejala más')}: "
+                  f"\"{_por_sexo(alcalde, 'el Sr. concejal', 'la Sra. concejala')} {con_tratamiento(alcalde)}\".")
+    return "\n".join(lineas)
+
+
+def _avisos_apellido(corp: Corporacion) -> list[str]:
+    avisos = []
+    vistos = set()
+    for p in corp.miembros:
+        ap = _primer_apellido(p)
+        if ap in vistos:
+            continue
+        vistos.add(ap)
+        comparten = [q for q in corp.miembros if _primer_apellido(q) == ap]
+        if len(comparten) < 2:
+            continue
+        n = "DOS" if len(comparten) == 2 else str(len(comparten))
+        nombres = ", ".join(q.nombre for q in comparten)
+        avisos.append(
+            f"ATENCIÓN: son {n} personas distintas que comparten apellido ({nombres}). \"{ap}\" a "
+            f"secas no identifica a ninguna de ellas. Para atribuirle una intervención a una de ellas "
+            f"hace falta el nombre de pila, o que la etiqueta de locutor esté identificada según las "
+            f"reglas de arriba. Si solo se oye el apellido, la atribución es \"no identificado en la "
+            f"grabación\".")
+    return avisos
+
+
+def bloque_corporacion(corp: Corporacion) -> str:
+    partes = ["CORPORACIÓN MUNICIPAL (para escribir bien los nombres —ver regla 4— y\n"
+              "acertar el tratamiento —ver regla 8—):"]
+    partes += [_linea_miembro(p) for p in _ordenados(corp)]
+    partes.append(_parrafo_presidencia(corp))
+    partes += _avisos_apellido(corp)
+    partes.append(
+        f"- {corp.secretaria.nombre} — {etiqueta_secretaria(corp)}-"
+        f"{_por_sexo(corp.secretaria, 'Interventor', 'Interventora')} del Ayuntamiento. NO es miembro de "
+        f"la Corporación y no vota: da fe de la sesión, lee acuerdos e informa cuando se le pide. "
+        f"Su voz sale en la grabación, pero nunca va en "
+        f"`asistentes` ni en `ausentes`.")
+    return "\n".join(partes)
+
+
+def _etiqueta_voz(corp: Corporacion, p: Persona) -> str:
+    if p is corp.quien_preside():
+        return f"{p.nombre} (preside)"
+    if p.cargo == "alcalde":
+        return f"{p.nombre} ({cargo_en_texto(p)})"
+    return p.nombre
+
+
+def personas_voz(corp: Corporacion) -> list[tuple[str, str, str]]:
+    voces = [(con_tratamiento(p), _etiqueta_voz(corp, p), " / ".join(p.apodos)) for p in _ordenados(corp)]
+    s = corp.secretaria
+    voces.append((con_tratamiento(s), f"{s.nombre} ({etiqueta_secretaria(corp)})", " / ".join(s.apodos)))
+    return voces
+
+
+def nombres_y_apodos(corp: Corporacion) -> list[str]:
+    nombres = []
+    for p in [*_ordenados(corp), corp.secretaria]:
+        nombres += [p.nombre, *p.apodos]
+    return list(dict.fromkeys(nombres))
+
+
+def resumen(corp: Corporacion) -> list[str]:
+    lineas = []
+    for p in _ordenados(corp):
+        grupo = "gobierno" if p.grupo == "gobierno" else "oposición"
+        extra = " — preside" if p is corp.quien_preside() else ""
+        lineas.append(f"{p.nombre} — {cargo_en_texto(p)} ({p.partido}, {grupo}){extra}")
+    lineas.append(f"{corp.secretaria.nombre} — {cargo_secretaria(corp)}")
+    return lineas
