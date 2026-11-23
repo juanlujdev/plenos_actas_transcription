@@ -58,7 +58,8 @@ def fecha_larga(iso: str) -> str:
 import re
 from pathlib import Path
 
-from plenos_informe import PRESIDENCIA, InformePleno, Votacion
+import corporacion
+from plenos_informe import InformePleno, Votacion
 
 PLANTILLAS_DIR = Path(__file__).resolve().parent / "plantillas"
 PLANTILLAS = {"ordinaria": "acta_ordinaria.docx",
@@ -79,7 +80,7 @@ _FILA_TIPO, _FILA_FECHA, _FILA_DURACION, _FILA_PRESIDENTE = 1, 2, 3, 5
 
 _RESULTADO = {"aprobado": "queda aprobado", "rechazado": "queda rechazado"}
 
-# Párrafo fijo de la plantilla (masculino genérico); se reescribe según PRESIDENCIA.
+# Párrafo fijo de la plantilla (masculino genérico); se reescribe según la corporación.
 _FORMULA_PLANTILLA = ("Una vez verificada por el Secretario la válida constitución del "
                       "órgano, el Presidente abre sesión, procediendo a la deliberación "
                       "sobre los asuntos incluidos en el Orden del Día")
@@ -100,10 +101,10 @@ _ALCALDESA = re.compile(r"\b(?:(la)\s+)?(?:Sra\.\s+)?alcaldesa"
 
 
 def normalizar_cargos(texto: str) -> str:
-    """Sustituye «la (Sra.) alcaldesa (en funciones…)» por el tratamiento de PRESIDENCIA, salvo
+    """Sustituye «la (Sra.) alcaldesa (en funciones…)» por el tratamiento de quien preside, salvo
     entre comillas, donde es una cita y no un tratamiento."""
     def sustituir(m):
-        tratamiento = PRESIDENCIA["tratamiento"]
+        tratamiento = corporacion.tratamiento_presidencia(corporacion.en_uso())
         previo = m.string[:m.start()].rstrip(" ")
         inicio_de_frase = not previo or previo[-1] in ".:;\n"
         return tratamiento[0].upper() + tratamiento[1:] if inicio_de_frase else tratamiento
@@ -170,7 +171,8 @@ def frase_acuerdo(punto) -> str:
     recuento = _recuento_en_letra(v)
     frase = f"{cabeza}, {acuerdo}, por {recuento}." if recuento else f"{cabeza}, {acuerdo}."
     if v.voto_de_calidad:
-        frase += (f" En virtud de su voto de calidad, {PRESIDENCIA['tratamiento']} "
+        frase += (f" En virtud de su voto de calidad, "
+                  f"{corporacion.tratamiento_presidencia(corporacion.en_uso())} "
                   f"resuelve el empate a favor de la propuesta.")
     return frase
 
@@ -187,7 +189,7 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
         f"En la localidad de Enguídanos siendo {hora} del día {fecha}, se reúnen en el "
         f"Salón de Actos de la Casa Consistorial el Pleno de este Ayuntamiento en sesión "
         f"{tipo}, previamente convocada{solicitud}, bajo la Presidencia de "
-        f"{PRESIDENCIA['formula']}.",
+        f"{corporacion.formula_presidencia(corporacion.en_uso())}.",
     ]
 
     asistencia = []
@@ -199,8 +201,9 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
                           f"que justifica{'n' if len(informe.ausentes) > 1 else ''} su ausencia.")
     parrafos.append(" ".join(asistencia) if asistencia else HUECO)
 
-    verificacion = (f"Una vez verificada por {PRESIDENCIA['secretaria']} la válida "
-                    f"constitución del órgano, {PRESIDENCIA['abre_la_sesion']}")
+    corp = corporacion.en_uso()
+    verificacion = (f"Una vez verificada por {corporacion.la_secretaria(corp)} la válida "
+                    f"constitución del órgano, {corporacion.abre_la_sesion(corp)}")
     if informe.declaraciones_apertura:
         parrafos.append(f"{verificacion} y pronuncia las siguientes palabras:")
         parrafos.extend(informe.declaraciones_apertura)
@@ -214,8 +217,8 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
 
 def formula_cierre(informe: InformePleno) -> str:
     """Fórmula final del acta (la plantilla no la trae)."""
-    # Sin presidente identificado manda PRESIDENCIA, igual que en la apertura.
-    presidente = informe.presidente or PRESIDENCIA["tratamiento"]
+    # Sin presidente identificado manda la corporación, igual que en la apertura.
+    presidente = informe.presidente or corporacion.tratamiento_presidencia(corporacion.en_uso())
     hora = hora_en_letra(informe.hora_fin) if informe.hora_fin else HUECO
     fecha = fecha_en_letra(informe.fecha_pleno) if informe.fecha_pleno else HUECO
     # "Secretaria – Interventora" lleva raya (–), no guion, como el acta firmada.

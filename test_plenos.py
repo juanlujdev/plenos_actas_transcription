@@ -472,7 +472,7 @@ from docx import Document as _Document
 from plenos_acta import (
     render_acta, frase_votacion, frase_acuerdo, parrafos_apertura, formula_cierre, HUECO,
 )
-from plenos_informe import PRESIDENCIA
+import corporacion
 
 # Frase de votación: los recuentos van en letra y un None nunca se imprime como cero.
 test("votación: unanimidad",
@@ -613,10 +613,10 @@ _tablas_sp, _ = _acta_generada(_sin_presidente)
 test("acta: sin presidente en la grabación conserva el de la plantilla",
      "LORENA LUJÁN CHUJFI" in _tablas_sp[2], True)
 
-# La fórmula de cierre nombra a quien preside desde PRESIDENCIA en vez de dejar un hueco.
+# La fórmula de cierre nombra a quien preside desde la corporación en vez de dejar un hueco.
 _cierre_sp = formula_cierre(_sin_presidente)
 test("acta: el cierre nombra a quien preside aunque la grabación no lo diga",
-     PRESIDENCIA["tratamiento"] in _cierre_sp, True)
+     corporacion.tratamiento_presidencia(corporacion.semilla()) in _cierre_sp, True)
 test("acta: el cierre nunca deja el hueco en la presidencia",
      f"acto, {HUECO} levanta" in _cierre_sp, False)
 test("acta: la fórmula de escape no llega al cierre como si fuera un nombre",
@@ -1162,13 +1162,14 @@ test("generador: el resultado se conserva aunque los números vayan a null",
      "ese resultado se escribe aunque los números vayan a `null`" in _pg, True)
 
 # Dos concejales comparten apellido: el apellido solo no identifica a ninguno.
+import corporacion as _co
 test("corporación: avisa de que hay dos Martínez",
-     "son DOS personas distintas que comparten apellido" in _pg, True)
-test("corporación: el aviso llega también al auditor",
-     "son DOS personas distintas que comparten apellido" in _pi_rescate.PROMPT_AUDITOR, True)
+     "son DOS personas distintas que comparten apellido" in _co.bloque_corporacion(_co.semilla()), True)
+test("corporación: REGLAS_CORPORACION llega al auditor",
+     _pi_rescate.REGLAS_CORPORACION in _pi_rescate.PROMPT_AUDITOR, True)
 
-# CORPORACION debe dejar claro que el público existe, que no está en ningún listado y cómo se le nombra.
-_corp = _pi_rescate.CORPORACION
+# REGLAS_CORPORACION debe dejar claro que el público existe, que no está en ningún listado y cómo se le nombra.
+_corp = _pi_rescate.REGLAS_CORPORACION
 test("corporación: avisa de que asiste público y algunos vecinos intervienen",
      "PÚBLICO ASISTENTE" in _corp, True)
 test("corporación: el público no está en ningún listado (no se identifica por descarte)",
@@ -1259,7 +1260,7 @@ test("diarización: la evidencia tiene que ser cita literal, no un resumen",
 test("diarización: primero el mapa, después el acta",
      "PRIMERO EL MAPA, DESPUÉS EL ACTA" in _diar, True)
 
-# Regla de voces mezcladas (DIARIZACION y CORPORACION).
+# Regla de voces mezcladas (DIARIZACION).
 test("diarización: avisa de que una etiqueta puede fusionar a dos personas",
      "haya fusionado dos voces parecidas bajo una sola etiqueta" in _diar, True)
 test("diarización: la señal es que la etiqueta afirme identidades incompatibles",
@@ -2392,11 +2393,13 @@ finally:
 
 
 # La presidenta de la Asociación de Jubilados es concejala, no público.
-test("CORPORACION: dice que la presidenta de los jubilados es la concejala Chari",
-     "Asociación de Jubilados" in _pi.CORPORACION
-     and "Mª Rosario Cerdán Pérez" in _pi.CORPORACION, True)
-test("CORPORACION: el ejemplo de cómo nombrar al público ya no usa ese cargo",
-     "de la Asociación de Jubilados\"" in _pi.CORPORACION, False)
+import corporacion as _co
+_bloque_semilla = _co.bloque_corporacion(_co.semilla())
+test("corporación: dice que la presidenta de los jubilados es la concejala Chari",
+     "Asociación de Jubilados" in _bloque_semilla
+     and "Mª Rosario Cerdán Pérez" in _bloque_semilla, True)
+test("corporación: el ejemplo de cómo nombrar al público ya no usa ese cargo",
+     "de la Asociación de Jubilados\"" in _pi.REGLAS_CORPORACION, False)
 
 
 # ── asuntos fuera del orden del día (regla 16 ter) ────────────────────────────
@@ -2538,7 +2541,8 @@ for _fn, _args in ((_pi_iv.generar_informe, ("T",)),
             pass
 _pi_iv._llamar_llm = _llamar_orig
 test("intervinientes: generador, auditor y corrector reciben el bloque antes de la transcripción",
-     [c.startswith("INTERVINIENTES DE ESTA SESIÓN") for c in _enviados],
+     [c.startswith("CORPORACIÓN MUNICIPAL")
+      and "INTERVINIENTES DE ESTA SESIÓN" in c.split("TRANSCRIPCIÓN DEL PLENO")[0] for c in _enviados],
      [True, False, True, False, True, False])
 
 for _rol in ("PROMPT_GENERADOR", "PROMPT_AUDITOR", "PROMPT_CORRECTOR"):
@@ -2883,14 +2887,36 @@ test("voces: apodos de la secretaria", _co.personas_voz(_s)[-1][2], "Elena")
 test("keyterms: nombres y apodos", {"Fernando Pons Mayor", "Chari", "Nando", "Elena"} <= set(_co.nombres_y_apodos(_s)), True)
 test("resumen: una línea por miembro y la secretaria", len(_co.resumen(_s)), 8)
 
-import plenos_informe as _pi_co
 _bs = _co.bloque_corporacion(_s)
 test("bloque: apodo de Chari", 'se dirigen a ella como "Chari"' in _bs and 'se la nombra siempre "Dª Mª Rosario Cerdán Pérez"' in _bs, True)
 test("bloque: apodos varios con o", 'se dirigen a él como "Pedro" o "Macario"' in _bs, True)
 test("bloque: apodo de la secretaria", 'se dirigen a ella como "Elena"' in _bs, True)
 test("bloque: avisa de Cerdán", 'comparten apellido (Mª Rosario Cerdán Pérez, Mario Cerdán Ochoa). "Cerdán"' in _bs, True)
 test("bloque: Alcalde-Presidente en su línea", "ALCALDE-PRESIDENTE (PSOE)" in _bs, True)
-test("voces: igual que PERSONAS_VOZ de hoy", _co.personas_voz(_s) == _pi_co.PERSONAS_VOZ, True)
+test("voces: igual que la lista fija de antes", _co.personas_voz(_s), [
+    ("Dª Lorena Luján Chujfi", "Lorena Luján Chujfi (preside)", ""),
+    ("D. Sergio de Fez Cerezuela", "Sergio de Fez Cerezuela (Alcalde)", ""),
+    ("Dª Mª Rosario Cerdán Pérez", "Mª Rosario Cerdán Pérez", "Chari"),
+    ("D. Mario Cerdán Ochoa", "Mario Cerdán Ochoa", ""),
+    ("D. Joaquín Martínez Luján", "Joaquín Martínez Luján", "Joaquín"),
+    ("D. Pedro José Martínez Martínez", "Pedro José Martínez Martínez", "Pedro / Macario"),
+    ("D. Fernando Pons Mayor", "Fernando Pons Mayor", "Fernando / Nando"),
+    ("Dª Mª Elena Valera Navarro", "Mª Elena Valera Navarro (Secretaria)", "Elena"),
+])
+
+import json as _js
+import plenos_informe as _pi3
+test("prompts: ya no llevan nombres reales",
+     [n for n in ("Lorena", "Sergio", "Joaquín", "Fernando Pons", "Rosario", "Féceres", "Zatanochoa", "Pedro José")
+      if any(n in t for t in (_pi3.PROMPT_GENERADOR, _pi3.PROMPT_AUDITOR,
+                               _pi3.PROMPT_ATRIBUCIONES, _pi3.PROMPT_CORRECTOR,
+                               _js.dumps(_pi3.InformePleno.model_json_schema(), ensure_ascii=False)))],
+     [])
+test("prompts: remiten al bloque del mensaje",
+     all("CORPORACIÓN MUNICIPAL" in t for t in (_pi3.PROMPT_GENERADOR, _pi3.PROMPT_AUDITOR,
+                                               _pi3.PROMPT_ATRIBUCIONES, _pi3.PROMPT_CORRECTOR)), True)
+test("cabecera: lleva la corporación en uso",
+     _pi3.cabecera_mensaje(None, None).startswith("CORPORACIÓN MUNICIPAL"), True)
 _pa = lambda n: _co.Persona(nombre=n, sexo="hombre", cargo="concejal", partido="X", grupo="oposicion")
 test("primer apellido con partícula", (_co._primer_apellido(_pa("Sergio de Fez Cerezuela")),
      _co._primer_apellido(_pa("Ana Pérez de la Torre"))), ("de Fez", "Pérez"))

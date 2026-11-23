@@ -15,6 +15,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+import corporacion
+
 _MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
           "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10,
           "noviembre": 11, "diciembre": 12}
@@ -164,7 +166,7 @@ class VozIdentificada(BaseModel):
 class BloqueRuegos(BaseModel):
     """El acta agrupa los ruegos y preguntas por quien los formula."""
     formulados_por: str = Field(description=(
-        "Quien formula el bloque, con tratamiento ('D. Joaquín Martínez'), SOLO si la "
+        "Quien formula el bloque, con tratamiento ('D. Nombre Apellido Apellido'), SOLO si la "
         "grabación lo identifica; si no, exactamente 'no identificado en la grabación'."))
     puntos: list[str] = Field(description=(
         "Un elemento por ruego o pregunta, con su respuesta en el mismo elemento solo si "
@@ -196,8 +198,8 @@ class InformePleno(BaseModel):
         "si no, null"))
     solicitantes: list[str] = Field(description=(
         "Solo en extraordinarias convocadas a petición de concejales: quién la solicita, "
-        "con tratamiento, nombre y apellidos completos y grupo si consta ('D. Pedro José "
-        "Martínez Martínez del Partido Popular'). Sale de la convocatoria o de la propia "
+        "con tratamiento, nombre y apellidos completos y grupo si consta ('D. Nombre "
+        "Apellido Apellido del Partido Popular'). Sale de la convocatoria o de la propia "
         "grabación. Lista vacía si la sesión no se convoca a solicitud de concejales."))
     fecha_pleno: str | None = Field(None, description="YYYY-MM-DD solo si se menciona en la grabación; si no, null")
     hora_inicio: str | None = Field(None, description=(
@@ -232,7 +234,7 @@ class InformePleno(BaseModel):
     asistentes: list[str] = Field(description=(
         "Miembros de la corporación cuya asistencia consta en la grabación (pase de lista "
         "o identificación explícita), con tratamiento y nombre completo tal como se escriben "
-        "en el acta: 'D. Sergio de Fez Cerezuela', 'Dª. Mª Rosario Cerdán Pérez'. Lista "
+        "en el acta: 'D. Nombre Apellido Apellido', 'Dª. Nombre Apellido Apellido'. Lista "
         "vacía si no consta; nunca deduzcas asistencia."))
     ausentes: list[str] = Field(description=(
         "Miembros cuya ausencia se hace constar expresamente, con tratamiento y nombre "
@@ -274,20 +276,6 @@ class AuditoriaInforme(BaseModel):
 
 # ══ Prompts de los tres roles ══
 
-# Quién preside de hecho; revisar tras elecciones, cambio de Alcaldía o delegación.
-# El título debe ser el del nombramiento, NO "Alcaldesa en funciones".
-PRESIDENCIA = {
-    # Cómo se nombra a quien preside en el cuerpo del acta.
-    "tratamiento": "la Sra. Teniente de Alcalde",
-    # Fórmula del encabezado, detrás de "bajo la Presidencia de ".
-    "formula": ("la segunda Teniente Alcalde Dª Lorena Luján Chujfi, que actúa en virtud "
-                "de la delegación de funciones efectuadas por el Sr. Alcalde – Presidente, "
-                "D. Sergio de Fez Cerezuela"),
-    # Género de las dos fórmulas fijas de la plantilla.
-    "abre_la_sesion": "la Presidenta abre la sesión",
-    "secretaria": "la Secretaria",
-}
-
 # Lugares que el transcriptor deforma. Los usan la regla 20, el corrector y los keyterms de AssemblyAI.
 TOPONIMOS = ["Enguídanos", "Las Chorreras", "Pesquera", "Playeta", "Keltiber",
              "Hoya de las Abejas", "PR-53", "GR-64", "GR-66"]
@@ -316,19 +304,6 @@ def bloque_intervinientes(intervinientes: list[dict] | None) -> str:
     return "INTERVINIENTES DE ESTA SESIÓN:\n" + "\n".join(lineas) + "\n\n"
 
 
-# Quién puede estar detrás de una etiqueta cuando la secretaría confirma las voces: (nombre
-# tal como va en el acta, cómo se le muestra y cómo la llaman). Es la corporación en código,
-# como CORPORACION; actualizar tras cada elección municipal.
-PERSONAS_VOZ = [
-    ("Dª Lorena Luján Chujfi", "Lorena Luján Chujfi (preside)", ""),
-    ("D. Sergio de Fez Cerezuela", "Sergio de Fez Cerezuela (Alcalde)", ""),
-    ("Dª Mª Rosario Cerdán Pérez", "Mª Rosario Cerdán Pérez", "Chari"),
-    ("D. Mario Cerdán Ochoa", "Mario Cerdán Ochoa", ""),
-    ("D. Joaquín Martínez Luján", "Joaquín Martínez Luján", "Joaquín"),
-    ("D. Pedro José Martínez Martínez", "Pedro José Martínez Martínez", "Pedro / Macario"),
-    ("D. Fernando Pons Mayor", "Fernando Pons Mayor", "Fernando / Nando"),
-    ("Dª Mª Elena Valera Navarro", "Mª Elena Valera Navarro (Secretaria)", "Elena"),
-]
 VOZ_PUBLICO = "un vecino asistente"
 VOZ_MEZCLADA = "etiqueta con voces mezcladas"
 
@@ -347,6 +322,11 @@ def bloque_voces(voces: dict[str, str] | None) -> str:
             texto = persona
         lineas.append(f"- Interviniente {etiqueta}: {texto}")
     return "VOCES CONFIRMADAS POR LA SECRETARÍA:\n" + "\n".join(lineas) + "\n\n"
+
+
+def cabecera_mensaje(intervinientes: list[dict] | None, voces: dict[str, str] | None) -> str:
+    return (f"{corporacion.bloque_corporacion(corporacion.en_uso())}\n\n"
+            f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}")
 
 
 def aplicar_voces(informe, voces: dict[str, str] | None):
@@ -389,7 +369,7 @@ Puede que el mensaje traiga, antes de la transcripción, un bloque "INTERVINIENT
 SESIÓN": las personas que la secretaría sabe que han intervenido y el nombre o apodo con
 el que se las llama en la sala. Si no viene, ignora esta sección.
 - Es una AYUDA para reconocer de quién se habla y para escribir bien un nombre, y se
-  CONTRASTA con el listado de la Corporación de arriba, que es la fuente oficial de cargos
+  CONTRASTA con el listado del bloque CORPORACIÓN MUNICIPAL, fuente oficial de cargos
   y tratamientos. Si una persona figura en los dos, el cargo y el tratamiento los da el
   listado, y el bloque aporta cómo la llaman. Si figura en el bloque y no en el listado,
   escríbela con "D."/"Dª" y el nombre tal como viene, sin inventarle cargo: el cargo solo
@@ -399,9 +379,9 @@ el que se las llama en la sala. Si no viene, ignora esta sección.
   (`asistentes` y `ausentes` salen de la grabación) ni que dijera una frase concreta; y no
   rellena el mapa de voces: una etiqueta se identifica con una cita literal de la
   transcripción. Lo que sí vale como cita es que alguien nombre a esa etiqueta por el
-  apodo del bloque ("Nando", "Chari"): es nombrarla.
-- Un nombre de pila o un apodo que pueda ser de dos personas (dos Martínez, dos Joaquín)
-  no identifica a ninguna: "no identificado en la grabación".
+  apodo del bloque: es nombrarla.
+- Un nombre de pila o un apodo que pueda ser de dos personas (dos con el mismo apellido o
+  el mismo nombre de pila) no identifica a ninguna: "no identificado en la grabación".
 - En el acta, siempre el nombre oficial completo con su tratamiento (ver APODOS). Si el
   bloque trae a un particular que no es de la Corporación, su nombre solo sirve para
   reconocerlo: sigue sin escribirse (ver PÚBLICO ASISTENTE).
@@ -421,48 +401,23 @@ el que se las llama en la sala. Si no viene, ignora esta sección.
   presenta como otra persona), lo señala, sin reescribirla."""
 
 
-CORPORACION = f"""CORPORACIÓN MUNICIPAL (para escribir bien los nombres —ver regla 4— y
-acertar el tratamiento —ver regla 8—):
-- Sergio de Fez Cerezuela — ALCALDE-PRESIDENTE (PSOE), de baja médica. Sigue siendo el
-  Alcalde a todos los efectos: es "el Sr. Alcalde D. Sergio de Fez Cerezuela". Cuando
-  asiste a la sesión e interviene en el debate sin presidirla, lo hace como un concejal
-  más: "el Sr. concejal D. Sergio de Fez Cerezuela".
-- Lorena Luján Chujfi — SEGUNDA TENIENTE DE ALCALDE (PSOE). Preside las sesiones en
-  virtud de la delegación de funciones efectuada por el Sr. Alcalde-Presidente.
-  NO es Alcaldesa ni Alcaldesa en funciones y NUNCA se la nombra así en el acta: es
-  {PRESIDENCIA['tratamiento']}, o Dª Lorena Luján Chujfi.
-- Mª Rosario Cerdán Pérez — Concejala, equipo de gobierno (PSOE). En la sesión se
-  dirigen a ella como "Chari": es la misma persona. Es ADEMÁS la presidenta de la
-  Asociación de Jubilados, y en el turno de ruegos interviene sobre asuntos de esa
-  asociación. Una voz que dice presidir la Asociación de Jubilados es ELLA, una
-  concejala: no es público asistente. En el acta se la nombra siempre "Dª Mª Rosario
-  Cerdán Pérez", y si ella misma invoca esa condición puede hacerse constar ("Dª Mª
-  Rosario Cerdán Pérez, en su condición de presidenta de la Asociación de Jubilados,
-  ruega que..."). No confundirla con los socios de esa asociación que asisten como
-  público y también hablan de sus asuntos: esos sí son vecinos.
-- Mario Cerdán Ochoa — Concejal, equipo de gobierno (PSOE)
-- Joaquín Martínez Luján — Concejal, oposición (PP)
-- Pedro José Martínez Martínez — Concejal, oposición (PP)
-  ATENCIÓN: son DOS personas distintas que comparten apellido. "Martínez" a secas no
-  identifica a ninguno de los dos. Para atribuirle una intervención a uno de ellos hace
-  falta el nombre de pila, o que la etiqueta de locutor esté identificada según las
-  reglas de arriba. Si solo se oye el apellido, la atribución es "no identificado en la
-  grabación".
-- Fernando Pons Mayor — Concejal, oposición (Agrupación Independiente de Enguídanos)
-- Mª Elena Valera Navarro — Secretaria-Interventora del Ayuntamiento. NO es miembro de
-  la Corporación y no vota: da fe de la sesión, lee acuerdos e informa cuando se le pide.
-  Su voz sale en la grabación, pero nunca va en `asistentes` ni en `ausentes`.
+REGLAS_CORPORACION = """CORPORACIÓN MUNICIPAL: el mensaje trae, antes de la transcripción,
+el bloque "CORPORACIÓN MUNICIPAL" con los miembros de la Corporación, su cargo, quién
+preside y cómo se le nombra, y quién ejerce la Secretaría. Sirve para escribir bien los nombres —ver
+regla 4— y acertar el tratamiento —ver regla 8—.
 
-APODOS: un apodo que se oiga en la grabación (como "Chari" arriba) sirve para
+APODOS: un apodo que se oiga en la grabación (como los que recoge el bloque CORPORACIÓN
+MUNICIPAL del mensaje) sirve para
 reconocer de quién se habla — también para el mapa de voces de DIARIZACION —, pero
 nunca para escribirlo en el acta: el documento usa siempre el nombre oficial completo
 con su tratamiento, aunque en toda la sesión no se la llame de otra forma. Vale como
-regla general, no solo para ese caso.
+regla general, no solo para los apodos de ese bloque.
 
 PÚBLICO ASISTENTE: a las sesiones asiste público, y algunos vecinos intervienen,
 sobre todo en el turno de ruegos y preguntas. Cambian de un pleno a otro y NO están
 en ningún listado: no se les puede identificar "por descarte" contra la Corporación,
-por mucho que una etiqueta de locutor no encaje con ninguno de los nombres de arriba.
+por mucho que una etiqueta de locutor no encaje con ninguno de los nombres del bloque
+CORPORACIÓN MUNICIPAL del mensaje.
 - NO son miembros de la Corporación: no votan, no se cuentan en ningún recuento (ver
   RECUENTOS DE VOTOS), y nunca van en `asistentes` ni en `ausentes` — esas dos listas
   son solo de la Corporación.
@@ -479,8 +434,8 @@ por mucho que una etiqueta de locutor no encaje con ninguno de los nombres de ar
   esta regla — atribuirle a una concejala con nombre y apellidos lo que dijo una
   vecina asistente.
 
-Ese listado da el CARGO y el TRATAMIENTO, que son datos oficiales y no dependen de la
-grabación. Lo que sigue exigiendo que la grabación lo diga es QUIÉN HABLA y QUÉ DICE:
+El bloque CORPORACIÓN MUNICIPAL del mensaje da el CARGO y el TRATAMIENTO, que son datos
+oficiales y no dependen de la grabación. Lo que sigue exigiendo que la grabación lo diga es QUIÉN HABLA y QUÉ DICE:
 el listado nunca sirve para rellenar el campo `presidente` ni para atribuir
 intervenciones que la grabación no atribuye (reglas 1, 4 y 5)."""
 
@@ -534,7 +489,7 @@ identificado en la grabación" aunque te parezca evidente por el contexto.
   a hablar, no una identificación de quién habló.
 - REGLA DE EXCLUSIÓN: si una etiqueta llama a alguien por su nombre, esa etiqueta NO es
   esa persona. Descartar así es tan valioso como identificar: si la etiqueta B le dice
-  "esto ocurrió, Joaquín", la etiqueta B no puede ser Joaquín, aunque la Presidencia le
+  "esto ocurrió, Fulano", la etiqueta B no puede ser Fulano, aunque la Presidencia le
   hubiera dado la palabra a él momentos antes.
 - SEÑALES DE PÚBLICO DENTRO DE UNA ETIQUETA DE CONCEJAL: si una intervención de una
   etiqueta identificada como concejal trata de "usted" a la Corporación, habla en nombre
@@ -589,7 +544,7 @@ Enguídanos (Cuenca). Recibes la transcripción literal de un pleno, con marcas 
 [HH:MM:SS] al inicio de cada segmento, y produces un informe estructurado en el JSON
 que se te pide.
 
-{CORPORACION}
+{REGLAS_CORPORACION}
 
 {INTERVINIENTES_SESION}
 
@@ -609,10 +564,10 @@ REGLAS INNEGOCIABLES:
    transcripción en que arranca su debate — mismo formato que el de la votación, pero
    referido al inicio del punto, no a su resultado.
 4. La transcripción es automática y deforma los nombres propios. Cuando aparezca un
-   nombre que se corresponda claramente por sonido con uno de la corporación (p. ej.
-   "Féceres Zuela" → "Sergio de Fez Cerezuela"; "Zatanochoa" → "Mario Cerdán Ochoa"),
-   escríbelo en su forma correcta. Esa lista sirve SOLO para escribir bien un nombre que
-   la grabación pronuncia: nunca para deducir quién habla ni para atribuir intervenciones
+   nombre que se corresponda claramente por sonido con uno de la corporación (un
+   apellido partido o deformado por sonido, p. ej. dos palabras que suenan como un
+   apellido compuesto), escríbelo en su forma correcta. Esa lista sirve SOLO para
+   escribir bien un nombre que la grabación pronuncia: nunca para deducir quién habla ni para atribuir intervenciones
    que la grabación no atribuye.
 5. Atribuye una intervención a una persona SOLO si la propia grabación la identifica
    ("tiene la palabra el concejal de...", "responde la Presidencia..."), directamente o a
@@ -632,16 +587,18 @@ REGLAS INNEGOCIABLES:
 
 REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
 7. Escribe en PRESENTE de indicativo, con el registro impersonal y formal propio de un
-   acta: "{PRESIDENCIA['tratamiento'].capitalize()} da cuenta...", "Se acuerda...".
+   acta: "[el tratamiento de quien preside que indica el bloque CORPORACIÓN MUNICIPAL]
+   da cuenta...", "Se acuerda...".
    Nunca en pasado.
 8. Usa el tratamiento formal del acta —D., Dª, Sr. concejal, Sra. concejala— seguido del
    nombre y los APELLIDOS COMPLETOS la primera vez que aparece cada persona en un punto:
-   "el Sr. concejal D. Fernando Pons Mayor", "la concejala Dª Mª Rosario Cerdán Pérez".
-   Después basta con la forma corta ("el Sr. Pons"). Cada miembro de la Corporación se
-   nombra por el cargo que consta en el listado de arriba, no por el papel que le supongas
-   en la sesión. Introduce las intervenciones con la fórmula habitual: "Toma la palabra el
-   Sr. concejal D. Fernando Pons Mayor, quien...", "Interviene el concejal D. Joaquín
-   Martínez Luján...", "Le responde {PRESIDENCIA['tratamiento']} que...".
+   "el Sr. concejal D. …", "la concejala Dª …".
+   Después basta con la forma corta ("el Sr. Apellido"). Cada miembro de la Corporación se
+   nombra por el cargo que consta en el bloque CORPORACIÓN MUNICIPAL, no por el papel que
+   le supongas en la sesión. Introduce las intervenciones con la fórmula habitual: "Toma la
+   palabra el Sr. concejal D. Nombre Apellido Apellido, quien...", "Interviene el concejal
+   D. Nombre Apellido Apellido...", "Le responde [el tratamiento de quien preside que
+   indica el bloque CORPORACIÓN MUNICIPAL] que...".
 9. Los títulos de los puntos van EN MAYÚSCULAS, como en las actas. Si el título del orden
    del día enumera varios asuntos (varias obras, varios expedientes), déjalo en el título
    solo el enunciado común y abre el texto del punto con la relación en una lista de
@@ -685,8 +642,9 @@ REDACCIÓN — ESTILO DE ACTA MUNICIPAL:
     `puntos`. Si recibe respuesta y la respuesta es CONCLUYENTE o importante para el acta
     —un dato con documento (regla 15), un compromiso con plazo o responsable, una negativa
     motivada, un trámite ya iniciado, la remisión a otro órgano—, va en el MISMO elemento,
-    en una frase atribuida a quien responde ("{PRESIDENCIA['tratamiento'].capitalize()}
-    responde que...", "El Sr. concejal D. Sergio de Fez Cerezuela contesta que..."). Se
+    en una frase atribuida a quien responde ("[el tratamiento de quien preside que indica
+    el bloque CORPORACIÓN MUNICIPAL] responde que...", "El Sr. concejal D. … contesta
+    que..."). Se
     omiten las respuestas que no cierran nada: evasivas, aclaraciones de pasada, ironías
     y el tira y afloja de réplicas (regla 16). Si responde una voz que el mapa no
     identifica, se recoge sin nombre ("se responde que...") en vez de atribuírsela a
@@ -804,7 +762,7 @@ informe que la transcripción NO respalde.
 Comprueba una a una las afirmaciones verificables: resultados y números de votaciones,
 nombres y cargos, importes, fechas, acuerdos adoptados y atribuciones de intervenciones.
 
-{CORPORACION}
+{REGLAS_CORPORACION}
 
 {INTERVINIENTES_SESION}
 
@@ -862,10 +820,11 @@ la evidencia registrada tiene que ser la que gana, no la que el generador encont
 primero.
 
 La transcripción es automática y deforma los nombres propios, así que el redactor tiene
-instrucciones de corregirlos contra esa lista. NO señales como problema que el informe
-escriba "Sergio de Fez Cerezuela" donde la transcripción dice "Féceres Zuela", ni casos
-equivalentes: es la corrección esperada. Sí debes señalar que se atribuya una
-intervención a una persona concreta cuando la grabación no la identifique.
+instrucciones de corregirlos contra el bloque CORPORACIÓN MUNICIPAL. NO señales como
+problema que el informe escriba bien el nombre de un miembro donde la transcripción trae
+un apellido partido o deformado por sonido, ni casos equivalentes: es la corrección
+esperada. Sí debes señalar que se atribuya una intervención a una persona concreta cuando
+la grabación no la identifique.
 
 DATOS SIN UNA FRASE CLARA QUE LOS SOSTENGA (regla 6 bis del redactor): objeta cada lugar,
 objeto de una solicitud, destinatario, cifra, norma o nombre que el informe afirme y que
@@ -905,14 +864,15 @@ Tampoco es un problema el tiempo verbal ni el estilo: el informe se redacta en p
 a propósito.
 
 Tampoco son problema las fórmulas y el tratamiento propios de un acta municipal: que el
-informe escriba "{PRESIDENCIA['tratamiento']}", "D. Joaquín Martínez Luján", "Toma la
-palabra...", "La Corporación se da por informada", "El Pleno del Ayuntamiento ACUERDA" o
-los títulos en mayúsculas es la redacción esperada, no una afirmación inventada, aunque la
-transcripción no contenga esas palabras literales. Los cargos y tratamientos salen del
-listado de la Corporación, que es fuente oficial: que quien preside aparezca como
-{PRESIDENCIA['tratamiento']} y no como alcaldesa, o que el Alcalde titular aparezca como
-tal aunque no presida, es lo correcto. Sí debes señalar que se atribuya una intervención a
-una persona que la grabación no identifica.
+informe escriba el tratamiento de quien preside que indica el bloque CORPORACIÓN
+MUNICIPAL, "D. Nombre Apellido Apellido", "Toma la palabra...", "La Corporación se da
+por informada", "El Pleno del Ayuntamiento ACUERDA" o los títulos en mayúsculas es la
+redacción esperada, no una afirmación inventada, aunque la transcripción no contenga esas palabras literales. Los cargos y tratamientos salen del
+listado de la Corporación, que es fuente oficial: que quien preside aparezca con el
+tratamiento que indica el bloque CORPORACIÓN MUNICIPAL —sin ser titular, nunca como
+Alcalde/Alcaldesa ni "en funciones"—, o que el Alcalde o la Alcaldesa titular aparezca
+como tal aunque no presida, es lo correcto. Sí debes señalar que se atribuya una
+intervención a una persona que la grabación no identifica.
 
 El redactor tiene instrucciones de OMITIR del acta las cifras accesorias que se dicen de
 palabra sin documento que las respalde, y de no trasladar imputaciones habladas sobre
@@ -966,7 +926,7 @@ Ayuntamiento de Enguídanos. Recibes la transcripción diarizada de un pleno y e
 en JSON. Haces UNA sola comprobación, y la haces a fondo: ¿lo que el informe pone en boca
 de una persona lo dijo de verdad esa persona?
 
-{CORPORACION}
+{REGLAS_CORPORACION}
 
 {INTERVINIENTES_SESION}
 
@@ -999,7 +959,7 @@ PROMPT_CORRECTOR = f"""Eres el corrector de informes de plenos del Ayuntamiento 
 Enguídanos. Recibes: la transcripción literal (con marcas [HH:MM:SS]), el informe completo
 en JSON, y la lista de problemas detectados por un auditor (cada uno con su evidencia).
 
-{CORPORACION}
+{REGLAS_CORPORACION}
 
 {INTERVINIENTES_SESION}
 
@@ -1022,9 +982,10 @@ Devuelve el informe COMPLETO corregido, en el mismo esquema JSON:
    títulos en mayúsculas, el acuerdo en el campo `acuerdo` y no dentro de `texto`, los
    párrafos separados por línea en blanco) y el nivel de detalle del texto original; no lo
    resumas ni lo pases a pasado.
-   Los cargos salen del listado de la Corporación: quien preside es
-   {PRESIDENCIA['tratamiento']}, nunca alcaldesa; el Alcalde titular es el Sr. Alcalde
-   aunque no presida.
+   Los cargos salen del listado de la Corporación: quien preside lleva el tratamiento
+   que indica el bloque CORPORACIÓN MUNICIPAL, y a quien preside sin ser titular nunca se
+   le llama Alcalde/Alcaldesa ni "en funciones"; el Alcalde o la Alcaldesa titular lo sigue
+   siendo aunque no presida.
 7. No devuelvas al informe una cifra o un dato de un tercero que el redactor omitió: si el
    auditor no lo señala como problema, es que la omisión era deliberada.
 8. Si recibes la CONVOCATORIA oficial del pleno, sigue mandando en la forma (títulos
@@ -1239,7 +1200,7 @@ def generar_informe(transcripcion: str, convocatoria: bytes | None = None,
         fuentes += f" + convocatoria ({len(convocatoria) // 1024} KB)"
     _log(f"  → GENERADOR ({fuentes})")
     informe = _llamar_llm(PROMPT_GENERADOR,
-                          f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}"
+                          f"{cabecera_mensaje(intervinientes, voces)}"
                           f"TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}",
                              InformePleno, convocatoria, "generador")
     resolutiva = sum(1 for p in informe.orden_del_dia if p.parte == "resolutiva")
@@ -1258,13 +1219,13 @@ def auditar_informe(transcripcion: str, informe: InformePleno,
                     rutas_tocadas: list[str] | None = None,
                     intervinientes: list[dict] | None = None,
                     voces: dict[str, str] | None = None) -> AuditoriaInforme:
-    # El auditor recibe la convocatoria (como CORPORACION): sin ella marcaría los títulos
+    # El auditor recibe la convocatoria (como la corporación): sin ella marcaría los títulos
     # del orden del día como no respaldados. `rutas_tocadas` es solo una pista de dónde
     # mirar primero; sigue auditando el informe entero.
     _log("  → AUDITOR (busca afirmaciones que la transcripción no respalde"
          + (f"; {_plural(len(rutas_tocadas), 'campo recién tocado', 'campos recién tocados')})"
             if rutas_tocadas else ")"))
-    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{cabecera_mensaje(intervinientes, voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
     if rutas_tocadas:
         contenido += ("\n\nCAMPOS QUE ACABA DE MODIFICAR EL CORRECTOR:\n"
@@ -1287,7 +1248,7 @@ def auditar_atribuciones(transcripcion: str, informe: InformePleno,
                          voces: dict[str, str] | None = None) -> AuditoriaInforme:
     """Auditoría con una sola pregunta: ¿lo dijo quien el informe dice? (PROMPT_ATRIBUCIONES)."""
     _log("  → AUDITOR DE ATRIBUCIONES (¿lo dijo quien el informe dice?)")
-    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{cabecera_mensaje(intervinientes, voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME A AUDITAR (JSON):\n\n{informe.model_dump_json()}")
     auditoria = _llamar_llm(PROMPT_ATRIBUCIONES, contenido, AuditoriaInforme,
                             None, "atribuciones", MODELO_AUDITOR)
@@ -1307,7 +1268,7 @@ def corregir_informe(transcripcion: str, informe: InformePleno, problemas: list[
                      voces: dict[str, str] | None = None) -> InformePleno:
     probs = "\n".join(f"- [{p.seccion}] {p.afirmacion_dudosa} → {p.motivo} (evidencia: {p.evidencia})"
                       for p in problemas)
-    contenido = (f"{bloque_intervinientes(intervinientes)}{bloque_voces(voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
+    contenido = (f"{cabecera_mensaje(intervinientes, voces)}TRANSCRIPCIÓN DEL PLENO:\n\n{transcripcion}\n\n"
                  f"INFORME COMPLETO (JSON):\n\n{informe.model_dump_json()}\n\n"
                  f"PROBLEMAS DETECTADOS POR EL AUDITOR:\n{probs}")
     _log(f"  → CORRECTOR ({_plural(len(problemas), 'objeción', 'objeciones')} que resolver)")

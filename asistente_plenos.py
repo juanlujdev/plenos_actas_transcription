@@ -35,8 +35,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from procesar_pleno import (ErrorDeDescarga, clave_pleno, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
                             _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
-from plenos_informe import (PERSONAS_VOZ, VOZ_MEZCLADA, VOZ_PUBLICO, muestras_por_etiqueta,
-                            normalizar_fecha)
+import corporacion
+from plenos_informe import VOZ_MEZCLADA, VOZ_PUBLICO, muestras_por_etiqueta, normalizar_fecha
 # El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py porque
 # procesar_pleno también lo escribe en --rehacer-acta, sin pasar por aquí.
 from plenos_guia import (_avisos_legibles, _lineas_aviso, enlace_video, escribir_comprobaciones,
@@ -359,8 +359,9 @@ def preguntar_grabacion_local(consola: Consola) -> str | None:
 
 
 def _preguntar_voces(consola: Consola, transcripcion: str, video_url: str | None) -> dict[str, str]:
+    personas = corporacion.personas_voz(corporacion.en_uso())
     opciones = [f"{mostrar}" + (f"  (le llaman «{apodo}»)" if apodo else "")
-                for _, mostrar, apodo in PERSONAS_VOZ]
+                for _, mostrar, apodo in personas]
     opciones += ["Público: un vecino o una vecina",
                  "Hay varias personas mezcladas en esta voz",
                  "No lo sé: que lo decida el programa"]
@@ -376,11 +377,11 @@ def _preguntar_voces(consola: Consola, transcripcion: str, video_url: str | None
                 consola.decir(f"             {enlace}")
         consola.decir(f"\n   ¿Quién habla en la voz {etiqueta}?")
         eleccion = preguntar_opcion(consola, opciones)
-        if eleccion <= len(PERSONAS_VOZ):
-            voces[etiqueta] = PERSONAS_VOZ[eleccion - 1][0]
-        elif eleccion == len(PERSONAS_VOZ) + 1:
+        if eleccion <= len(personas):
+            voces[etiqueta] = personas[eleccion - 1][0]
+        elif eleccion == len(personas) + 1:
             voces[etiqueta] = VOZ_PUBLICO
-        elif eleccion == len(PERSONAS_VOZ) + 2:
+        elif eleccion == len(personas) + 2:
             voces[etiqueta] = VOZ_MEZCLADA
     return voces
 
@@ -402,7 +403,7 @@ def preguntar_voces(consola: Consola, transcripcion: str, video_url: str | None 
             return {}
         while True:
             voces = _preguntar_voces(consola, transcripcion, video_url)
-            nombres = {n: m for n, m, _ in PERSONAS_VOZ}
+            nombres = {n: m for n, m, _ in corporacion.personas_voz(corporacion.en_uso())}
             nombres[VOZ_PUBLICO], nombres[VOZ_MEZCLADA] = "Público (vecino o vecina)", "Varias personas mezcladas"
             consola.decir("\n   Esto es lo que me has dicho:")
             for etiqueta, persona in voces.items():
