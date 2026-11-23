@@ -865,11 +865,23 @@ CAMPOS_PERSONA = [
 ]
 
 
+def nombre_repetido(nombre: str, otros) -> bool:
+    return " ".join(nombre.split()).casefold() in {" ".join(p.nombre.split()).casefold() for p in otros}
+
+
+def _preguntar_nombre(consola: Consola, actual: Persona | None, otros) -> str:
+    while True:
+        nombre = _texto(consola, "Nombre y apellidos completos, sin «D.» ni «Dª»:",
+                        actual.nombre if actual else None, obligatorio=True)
+        if not nombre_repetido(nombre, otros):
+            return nombre
+        consola.decir(f"\n   Ya hay otra persona con el nombre «{nombre}». Escribe otro.")
+
+
 def _preguntar_campo(consola: Consola, campo: int, actual: Persona | None, datos: dict,
                      otros, puede_ser_alcalde: bool) -> dict:
     if campo == 1:
-        return {"nombre": _texto(consola, "Nombre y apellidos completos, sin «D.» ni «Dª»:",
-                                 actual.nombre if actual else None, obligatorio=True)}
+        return {"nombre": _preguntar_nombre(consola, actual, otros)}
     if campo == 2:
         return {"sexo": _preguntar_sexo(consola)}
     if campo == 3:
@@ -1024,21 +1036,47 @@ def _baja(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
     _confirmar_y_guardar(consola, inst, nueva)
 
 
+def _persona_de_la_lista(consola: Consola, otros: list[Persona]) -> Persona:
+    hay_alcalde = any(p.cargo == "alcalde" for p in otros)
+    return preguntar_persona(consola, otros=otros, puede_ser_alcalde=not hay_alcalde)
+
+
+def _corregir_lista(consola: Consola, miembros: list[Persona]) -> None:
+    consola.decir("\n   ¿A quién quieres corregir o quitar?")
+    elegido = preguntar_opcion(consola, [p.nombre for p in miembros] + ["Volver"])
+    if elegido > len(miembros):
+        return
+    persona = miembros[elegido - 1]
+    consola.decir(f"\n   ¿Qué hago con {persona.nombre}?")
+    accion = preguntar_opcion(consola, ["Volver a escribir sus datos", "Quitar a esta persona de la lista", "Volver"])
+    if accion == 1:
+        miembros[elegido - 1] = _persona_de_la_lista(consola, [p for p in miembros if p is not persona])
+    elif accion == 2:
+        miembros.remove(persona)
+
+
 def _nueva_corporacion(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
     consola.decir("\n   Vamos a escribir la corporación entera, persona a persona: los")
     consola.decir("   concejales y concejalas, el Alcalde o la Alcaldesa y los Tenientes de")
     consola.decir("   Alcalde. No se guarda nada hasta el final, y antes te enseño cómo queda.")
     miembros: list[Persona] = []
+    anadir = True
     while True:
-        consola.decir(f"\n   ── Persona {len(miembros) + 1} ──")
-        hay_alcalde = any(p.cargo == "alcalde" for p in miembros)
-        miembros.append(preguntar_persona(consola, otros=miembros, puede_ser_alcalde=not hay_alcalde))
-        consola.decir(f"\n   Llevas {len(miembros)}: {', '.join(p.nombre for p in miembros)}.")
-        if preguntar_opcion(consola, ["Dar de alta a otra persona", "Ya están todos"]) == 1:
-            continue
-        if any(p.cargo == "alcalde" for p in miembros):
-            break
-        consola.decir("\n   Todavía falta el Alcalde o la Alcaldesa: dalo de alta ahora.")
+        if anadir:
+            consola.decir(f"\n   ── Persona {len(miembros) + 1} ──")
+            miembros.append(_persona_de_la_lista(consola, miembros))
+        consola.decir(f"\n   Llevas {len(miembros)}: {', '.join(p.nombre for p in miembros) or 'nadie'}.")
+        eleccion = preguntar_opcion(consola, ["Dar de alta a otra persona",
+                                              "Corregir o quitar a alguien de la lista",
+                                              "Ya están todos"])
+        anadir = eleccion == 1
+        if eleccion == 2:
+            _corregir_lista(consola, miembros)
+        elif eleccion == 3:
+            if any(p.cargo == "alcalde" for p in miembros):
+                break
+            consola.decir("\n   Todavía falta el Alcalde o la Alcaldesa: dalo de alta, o corrige")
+            consola.decir("   el cargo de quien lo sea.")
     consola.decir("\n   Ahora, la Secretaria o el Secretario.")
     secretaria = preguntar_secretaria(consola, corp.secretaria)
     presidencia = preguntar_presidencia(consola, miembros)

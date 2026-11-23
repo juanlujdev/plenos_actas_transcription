@@ -3033,6 +3033,11 @@ _relevo = sin_persona(_co.semilla(), "Sergio de Fez Cerezuela", nuevo_alcalde="L
 test("baja del alcalde con relevo: la nueva es alcaldesa y preside como titular",
      (_relevo.alcalde().nombre, _relevo.presidencia.motivo), ("Lorena Luján Chujfi", "titular"))
 
+from asistente_plenos import nombre_repetido
+test("nombre repetido: igual salvo mayúsculas y espacios",
+     nombre_repetido("  mario  cerdán OCHOA ", _co.semilla().miembros), True)
+test("nombre repetido: un nombre nuevo no lo es", nombre_repetido("Ana Ruiz Gil", _co.semilla().miembros), False)
+
 from asistente_plenos import con_persona, instalar_plantilla, volver_a_la_original
 _mocion = con_persona(_co.semilla(), _co.semilla().miembros[6].model_copy(update={"cargo": "alcalde"}),
                       en_lugar_de="Fernando Pons Mayor")
