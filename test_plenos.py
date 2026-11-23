@@ -2883,6 +2883,28 @@ test("voces: apodos de la secretaria", _co.personas_voz(_s)[-1][2], "Elena")
 test("keyterms: nombres y apodos", {"Fernando Pons Mayor", "Chari", "Nando", "Elena"} <= set(_co.nombres_y_apodos(_s)), True)
 test("resumen: una línea por miembro y la secretaria", len(_co.resumen(_s)), 8)
 
+import plenos_informe as _pi_co
+_bs = _co.bloque_corporacion(_s)
+test("bloque: apodo de Chari", 'se dirigen a ella como "Chari"' in _bs and 'se la nombra siempre "Dª Mª Rosario Cerdán Pérez"' in _bs, True)
+test("bloque: apodos varios con o", 'se dirigen a él como "Pedro" o "Macario"' in _bs, True)
+test("bloque: apodo de la secretaria", 'se dirigen a ella como "Elena"' in _bs, True)
+test("bloque: avisa de Cerdán", 'comparten apellido (Mª Rosario Cerdán Pérez, Mario Cerdán Ochoa). "Cerdán"' in _bs, True)
+test("bloque: Alcalde-Presidente en su línea", "ALCALDE-PRESIDENTE (PSOE)" in _bs, True)
+test("voces: igual que PERSONAS_VOZ de hoy", _co.personas_voz(_s) == _pi_co.PERSONAS_VOZ, True)
+_pa = lambda n: _co.Persona(nombre=n, sexo="hombre", cargo="concejal", partido="X", grupo="oposicion")
+test("primer apellido con partícula", (_co._primer_apellido(_pa("Sergio de Fez Cerezuela")),
+     _co._primer_apellido(_pa("Ana Pérez de la Torre"))), ("de Fez", "Pérez"))
+test("primer apellido: dos palabras y una", (_co._primer_apellido(_pa("Ana Pérez")), _co._primer_apellido(_pa("Ana"))), ("Pérez", None))
+_uno = _s.model_copy(deep=True)
+_uno.miembros.append(_pa("Cher"))
+test("nombre de una palabra: sin error", "Cher" in _co.bloque_corporacion(_uno), True)
+_tres = _s.model_copy(deep=True)
+_tres.miembros += [_pa("Ana Ruiz Gil"), _pa("Eva Ruiz Sanz"), _pa("Iván Ruiz Mora")]
+test("tres con el mismo apellido: TRES", "son TRES personas distintas" in _co.bloque_corporacion(_tres), True)
+_t6 = _s.model_copy(deep=True)
+_t6.miembros[3].cargo, _t6.miembros[3].orden_teniente = "teniente", 6
+test("sexto teniente sin KeyError", _co.cargo_en_texto(_t6.miembros[3]), "6.º Teniente de Alcalde")
+
 
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()

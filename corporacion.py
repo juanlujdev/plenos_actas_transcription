@@ -130,6 +130,10 @@ _ORDINALES = {
 }
 
 
+def _ordinal(sexo: str, n: int) -> str:
+    return _ORDINALES[sexo].get(n) or f"{n}.{'º' if sexo == 'hombre' else 'ª'}"
+
+
 def _por_sexo(p: Persona | Secretaria, masculino: str, femenino: str) -> str:
     return masculino if p.sexo == "hombre" else femenino
 
@@ -142,7 +146,7 @@ def cargo_en_texto(p: Persona) -> str:
     if p.cargo == "alcalde":
         return _por_sexo(p, "Alcalde", "Alcaldesa")
     if p.cargo == "teniente":
-        return f"{_ORDINALES[p.sexo][p.orden_teniente]} Teniente de Alcalde"
+        return f"{_ordinal(p.sexo, p.orden_teniente)} Teniente de Alcalde"
     return _por_sexo(p, "Concejal", "Concejala")
 
 
@@ -155,7 +159,7 @@ def formula_presidencia(corp: Corporacion) -> str:
     preside = corp.quien_preside()
     if corp.presidencia.motivo == "titular":
         return _titular(preside)
-    teniente = (f"{_por_sexo(preside, 'el', 'la')} {_ORDINALES[preside.sexo][preside.orden_teniente]} "
+    teniente = (f"{_por_sexo(preside, 'el', 'la')} {_ordinal(preside.sexo, preside.orden_teniente)} "
                 f"Teniente Alcalde {con_tratamiento(preside)}")
     alcalde = corp.alcalde()
     if corp.presidencia.motivo == "delegacion":
@@ -200,13 +204,38 @@ def _ordenados(corp: Corporacion) -> list[Persona]:
     return [preside, *alcalde, *tenientes, *concejales]
 
 
-def _primer_apellido(p: Persona) -> str:
-    return p.nombre.split()[-2]
+_PARTICULAS = {"de", "del", "la", "las", "los", "y", "san"}
+
+
+def _primer_apellido(p: Persona) -> str | None:
+    unidades: list[str] = []
+    for palabra in reversed(p.nombre.split()):
+        if unidades and palabra.lower() in _PARTICULAS:
+            unidades[-1] = f"{palabra} {unidades[-1]}"
+        else:
+            unidades.append(palabra)
+    unidades.reverse()
+    if len(unidades) < 2:
+        return None
+    return unidades[-2] if len(unidades) >= 3 else unidades[-1]
+
+
+def _frase_apodos(p: Persona | Secretaria) -> str:
+    if not p.apodos:
+        return ""
+    ellos = _por_sexo(p, "él", "ella")
+    la = _por_sexo(p, "lo", "la")
+    apodos = " o ".join(f'"{a}"' for a in p.apodos)
+    return (f'En la sesión se dirigen a {ellos} como {apodos}: es la misma persona. '
+            f'En el acta se {la} nombra siempre "{con_tratamiento(p)}".')
 
 
 def _linea_miembro(p: Persona) -> str:
     cargo = cargo_en_texto(p)
-    cargo = cargo.upper() if p.cargo != "concejal" else cargo
+    if p.cargo == "alcalde":
+        cargo = f"{cargo}-{_por_sexo(p, 'Presidente', 'Presidenta')}".upper()
+    elif p.cargo == "teniente":
+        cargo = cargo.upper()
     grupo = "equipo de gobierno" if p.grupo == "gobierno" else "oposición"
     if p.cargo == "concejal":
         linea = f"- {p.nombre} — {cargo}, {grupo} ({p.partido})"
@@ -214,8 +243,9 @@ def _linea_miembro(p: Persona) -> str:
         linea = f"- {p.nombre} — {cargo} ({p.partido}), {grupo}"
     if p.situacion:
         linea += f", {p.situacion}"
-    if p.observacion:
-        linea += "\n  " + p.observacion
+    for extra in (_frase_apodos(p), p.observacion):
+        if extra:
+            linea += "\n  " + extra
     return linea
 
 
@@ -244,18 +274,21 @@ def _parrafo_presidencia(corp: Corporacion) -> str:
     return "\n".join(lineas)
 
 
+_NUMEROS = {2: "DOS", 3: "TRES", 4: "CUATRO", 5: "CINCO"}
+
+
 def _avisos_apellido(corp: Corporacion) -> list[str]:
     avisos = []
     vistos = set()
     for p in corp.miembros:
         ap = _primer_apellido(p)
-        if ap in vistos:
+        if ap is None or ap in vistos:
             continue
         vistos.add(ap)
         comparten = [q for q in corp.miembros if _primer_apellido(q) == ap]
         if len(comparten) < 2:
             continue
-        n = "DOS" if len(comparten) == 2 else str(len(comparten))
+        n = _NUMEROS.get(len(comparten), str(len(comparten)))
         nombres = ", ".join(q.nombre for q in comparten)
         avisos.append(
             f"ATENCIÓN: son {n} personas distintas que comparten apellido ({nombres}). \"{ap}\" a "
@@ -277,7 +310,8 @@ def bloque_corporacion(corp: Corporacion) -> str:
         f"{_por_sexo(corp.secretaria, 'Interventor', 'Interventora')} del Ayuntamiento. NO es miembro de "
         f"la Corporación y no vota: da fe de la sesión, lee acuerdos e informa cuando se le pide. "
         f"Su voz sale en la grabación, pero nunca va en "
-        f"`asistentes` ni en `ausentes`.")
+        f"`asistentes` ni en `ausentes`."
+        + (f"\n  {_frase_apodos(corp.secretaria)}" if corp.secretaria.apodos else ""))
     return "\n".join(partes)
 
 
