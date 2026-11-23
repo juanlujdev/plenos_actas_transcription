@@ -371,22 +371,22 @@ el que se las llama en la sala. Si no viene, ignora esta sección.
 - Es una AYUDA para reconocer de quién se habla y para escribir bien un nombre, y se
   CONTRASTA con el listado del bloque CORPORACIÓN MUNICIPAL, fuente oficial de cargos
   y tratamientos. Si una persona figura en los dos, el cargo y el tratamiento los da el
-  listado, y el bloque aporta cómo la llaman. Si figura en el bloque y no en el listado,
+  listado, y el bloque de intervinientes aporta cómo la llaman. Si figura en el bloque de intervinientes y no en el listado,
   escríbela con "D."/"Dª" y el nombre tal como viene, sin inventarle cargo: el cargo solo
-  si la grabación lo dice. Si el bloque y el listado discrepan sobre cómo se llama a una
+  si la grabación lo dice. Si el bloque de intervinientes y el listado discrepan sobre cómo se llama a una
   misma persona, valen los dos nombres para reconocerla.
-- NO prueba nada de lo ocurrido. Que alguien figure en el bloque no demuestra que asistiera
+- NO prueba nada de lo ocurrido. Que alguien figure en el bloque de intervinientes no demuestra que asistiera
   (`asistentes` y `ausentes` salen de la grabación) ni que dijera una frase concreta; y no
   rellena el mapa de voces: una etiqueta se identifica con una cita literal de la
   transcripción. Lo que sí vale como cita es que alguien nombre a esa etiqueta por el
-  apodo del bloque: es nombrarla.
+  apodo del bloque de intervinientes: es nombrarla.
 - Un nombre de pila o un apodo que pueda ser de dos personas (dos con el mismo apellido o
   el mismo nombre de pila) no identifica a ninguna: "no identificado en la grabación".
 - En el acta, siempre el nombre oficial completo con su tratamiento (ver APODOS). Si el
-  bloque trae a un particular que no es de la Corporación, su nombre solo sirve para
+  bloque de intervinientes trae a un particular que no es de la Corporación, su nombre solo sirve para
   reconocerlo: sigue sin escribirse (ver PÚBLICO ASISTENTE).
-- El auditor no señala como inventado un nombre corregido gracias a este bloque; sí señala
-  una atribución que ni la grabación ni el mapa de voces sostienen, venga o no en el bloque.
+- El auditor no señala como inventado un nombre corregido gracias a este bloque de intervinientes; sí señala
+  una atribución que ni la grabación ni el mapa de voces sostienen, venga o no en el bloque de intervinientes.
 - VOCES CONFIRMADAS POR LA SECRETARÍA (opcional): si el mensaje trae este bloque, cada línea
   la ha confirmado una persona que ha ESCUCHADO la grabación, y SÍ vale como prueba, a
   diferencia del bloque de intervinientes: a esa etiqueta se le atribuye todo lo que dice,

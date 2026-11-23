@@ -267,7 +267,7 @@ def _parrafo_presidencia(corp: Corporacion) -> str:
         cargo = _por_sexo(preside, "Alcalde", "Alcaldesa")
         lineas.append(f"NO es {cargo} ni {cargo} en funciones y NUNCA se {_por_sexo(preside, 'le', 'la')} "
                       f"nombra así en el acta: es {trato}, o {con_tratamiento(preside)}.")
-    lineas.append(f"Sigue siendo {el_alcalde} a todos los efectos: es \"{el_alcalde} {con_tratamiento(alcalde)}\". "
+    lineas.append(f"{con_tratamiento(alcalde)} sigue siendo {el_alcalde} a todos los efectos: es \"{el_alcalde} {con_tratamiento(alcalde)}\". "
                   f"Cuando asiste a la sesión e interviene en el debate sin presidirla, lo hace como "
                   f"{_por_sexo(alcalde, 'un concejal más', 'una concejala más')}: "
                   f"\"{_por_sexo(alcalde, 'el Sr. concejal', 'la Sra. concejala')} {con_tratamiento(alcalde)}\".")
@@ -294,7 +294,7 @@ def _avisos_apellido(corp: Corporacion) -> list[str]:
             f"ATENCIÓN: son {n} personas distintas que comparten apellido ({nombres}). \"{ap}\" a "
             f"secas no identifica a ninguna de ellas. Para atribuirle una intervención a una de ellas "
             f"hace falta el nombre de pila, o que la etiqueta de locutor esté identificada según las "
-            f"reglas de arriba. Si solo se oye el apellido, la atribución es \"no identificado en la "
+            f"reglas de ETIQUETAS DE LOCUTOR. Si solo se oye el apellido, la atribución es \"no identificado en la "
             f"grabación\".")
     return avisos
 

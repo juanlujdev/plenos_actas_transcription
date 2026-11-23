@@ -109,7 +109,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   la grabación". Va también al auditor por el mismo motivo que `CORPORACION`: si no,
   marcaría cada atribución propagada como afirmación no respaldada y quemaría las vueltas.
 - **Los nombres se corrigen ya en la transcripción, no solo en los prompts.**
-  `AAI_KEYTERMS` (nombres de la corporación y vocabulario de acta), `AAI_PROMPT`
+  `keyterms_del_pleno` (nombres de la corporación + `AAI_VOCABULARIO`), `aai_prompt(corp)`
   (contexto en prosa) y `AAI_SPELLING` (`from` admite varias palabras, `to` solo una y
   distingue mayúsculas) atacan el destrozo de nombres antes de que llegue al LLM.
 - **No pedir a yt-dlp que convierta el audio**: si el original ya es del formato pedido

@@ -76,7 +76,7 @@ _T_EXPEDIENTE, _T_DATOS = 1, 2
 # Se reaprovecha la banda de A) como único encabezado "ORDEN DEL DÍA" y se borran las demás.
 _T_ENCABEZADO_ORDEN, _T_ORDEN = 3, 4
 _T_SOBRANTES = (8, 7, 6, 5)  # de mayor a menor: borrar por índice no desplaza los previos
-_FILA_TIPO, _FILA_FECHA, _FILA_DURACION, _FILA_PRESIDENTE = 1, 2, 3, 5
+_FILA_TIPO, _FILA_FECHA, _FILA_DURACION, _FILA_PRESIDENTE, _FILA_SECRETARIA = 1, 2, 3, 5, 6
 
 _RESULTADO = {"aprobado": "queda aprobado", "rechazado": "queda rechazado"}
 
@@ -102,7 +102,11 @@ _ALCALDESA = re.compile(r"\b(?:(la)\s+)?(?:Sra\.\s+)?alcaldesa"
 
 def normalizar_cargos(texto: str) -> str:
     """Sustituye «la (Sra.) alcaldesa (en funciones…)» por el tratamiento de quien preside, salvo
-    entre comillas, donde es una cita y no un tratamiento."""
+    entre comillas, donde es una cita y no un tratamiento. Con Alcaldesa titular no hay nada que
+    corregir."""
+    if corporacion.hay_alcaldesa(corporacion.en_uso()):
+        return texto
+
     def sustituir(m):
         tratamiento = corporacion.tratamiento_presidencia(corporacion.en_uso())
         previo = m.string[:m.start()].rstrip(" ")
@@ -217,14 +221,13 @@ def parrafos_apertura(informe: InformePleno) -> list[str]:
 
 def formula_cierre(informe: InformePleno) -> str:
     """Fórmula final del acta (la plantilla no la trae)."""
-    # Sin presidente identificado manda la corporación, igual que en la apertura.
-    presidente = informe.presidente or corporacion.tratamiento_presidencia(corporacion.en_uso())
+    corp = corporacion.en_uso()
     hora = hora_en_letra(informe.hora_fin) if informe.hora_fin else HUECO
     fecha = fecha_en_letra(informe.fecha_pleno) if informe.fecha_pleno else HUECO
     # "Secretaria – Interventora" lleva raya (–), no guion, como el acta firmada.
     return (f"Y no habiendo más asuntos que tratar y cumpliendo con el objeto del acto, "
-            f"{presidente} levanta la sesión a {hora} del día de hoy, {fecha}, lo cual "
-            f"como Secretaria – Interventora, doy fe.")
+            f"{corporacion.tratamiento_presidencia(corp)} levanta la sesión a {hora} del día de hoy, "
+            f"{fecha}, lo cual como {corporacion.cargo_secretaria(corp)}, doy fe.")
 
 
 def _texto_punto(punto) -> list:
@@ -331,9 +334,12 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
     if informe.hora_inicio and informe.hora_fin:
         _poner_celda(datos.rows[_FILA_DURACION].cells[1],
                      f"Desde las {informe.hora_inicio} hasta las {informe.hora_fin} horas")
-    if informe.presidente:
-        # La celda va en mayúsculas, como en el acta firmada.
-        _poner_celda(datos.rows[_FILA_PRESIDENTE].cells[1], informe.presidente.upper())
+    corp = corporacion.en_uso()
+    # Las celdas van en mayúsculas, como en el acta firmada.
+    _poner_celda(datos.rows[_FILA_PRESIDENTE].cells[1], corp.quien_preside().nombre.upper())
+    fila_secretaria = datos.rows[_FILA_SECRETARIA]
+    _poner_celda(fila_secretaria.cells[0], corporacion.etiqueta_secretaria(corp))
+    _poner_celda(fila_secretaria.cells[1], corp.secretaria.nombre.upper())
 
     # El primer párrafo reaprovecha el hueco (y su estilo); el resto va antes de la
     # fórmula fija de la plantilla, que se elimina.

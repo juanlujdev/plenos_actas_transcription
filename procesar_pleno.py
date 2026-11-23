@@ -34,6 +34,9 @@ from typing import NamedTuple
 
 import requests
 
+import corporacion
+from corporacion import Corporacion
+from plenos_acta import letras
 from plenos_informe import (TOPONIMOS, Problema, normalizar_fecha, parsear_intervinientes,
                             verificar_respuesta)
 
@@ -185,20 +188,19 @@ AAI_MODELO = "universal-3-5-pro"
 AAI_SONDEO = 20  # s entre sondeos; no hay webhook porque esto corre en tu PC
 
 # Contexto en prosa (5-50 palabras según la doc); las palabras sueltas van en keyterms.
-AAI_PROMPT = (
-    "Sesión plenaria del Ayuntamiento de Enguídanos, provincia de Cuenca, España. "
-    "Intervienen la Alcaldía, seis concejales, la secretaria municipal y público "
-    "asistente; algunos vecinos toman la palabra, sobre todo en ruegos y preguntas. "
-    "Se debaten y votan los puntos del orden del día: mociones, ordenanzas fiscales, "
-    "presupuesto municipal, subvenciones de la Diputación de Cuenca, expedientes de "
-    "contratación, decretos de alcaldía y ruegos y preguntas."
-)
+def aai_prompt(corp: Corporacion) -> str:
+    return (
+        "Sesión plenaria del Ayuntamiento de Enguídanos, provincia de Cuenca, España. "
+        f"Intervienen la Alcaldía, {letras(len(corp.miembros) - 1)} concejales, la secretaria "
+        "municipal y público asistente; algunos vecinos toman la palabra, sobre todo en ruegos "
+        "y preguntas. Se debaten y votan los puntos del orden del día: mociones, ordenanzas "
+        "fiscales, presupuesto municipal, subvenciones de la Diputación de Cuenca, expedientes "
+        "de contratación, decretos de alcaldía y ruegos y preguntas."
+    )
 
-# Tope: 1000 términos, 6 palabras por término.
-AAI_KEYTERMS = [
-    "Sergio de Fez Cerezuela", "Lorena Luján Chujfi", "María Rosario Cerdán Pérez",
-    "Mario Cerdán Ochoa", "Joaquín Martínez", "Pedro José Martínez Martínez",
-    "Fernando Pons Mayor", "Chari",  # se dirigen a Mª Rosario por el apodo
+
+# Sin nombres de personas: esos salen de la corporación. Tope: 1000 términos, 6 palabras cada uno.
+AAI_VOCABULARIO = [
     "moción de censura", "delegación de funciones",
     "Enguídanos", "Ayuntamiento de Enguídanos", "Diputación de Cuenca",
     "Sra. Alcaldesa", "Sr. Alcalde", "secretaria", "orden del día",
@@ -238,12 +240,12 @@ def _subir_audio(ruta: str, cabeceras: dict, intentos: int = 4) -> str:
 
 
 def keyterms_del_pleno(intervinientes: list[dict] | None) -> list[str]:
-    """AAI_KEYTERMS más nombres y apodos de este pleno, sin repetir (máx. 6 palabras por término)."""
-    extra = [t for p in intervinientes or [] for t in (p["nombre"], *p.get("apodos", []))
-             if 0 < len(t.split()) <= 6]
+    """Nombres y apodos de la corporación, el vocabulario fijo y los de este pleno, sin repetir
+    (máx. 6 palabras por término)."""
+    extra = [t for p in intervinientes or [] for t in (p["nombre"], *p.get("apodos", []))]
     vistos, salida = set(), []
-    for t in [*AAI_KEYTERMS, *extra]:
-        if t.lower() not in vistos:
+    for t in [*corporacion.nombres_y_apodos(corporacion.en_uso()), *AAI_VOCABULARIO, *extra]:
+        if 0 < len(t.split()) <= 6 and t.lower() not in vistos:
             vistos.add(t.lower())
             salida.append(t)
     return salida
@@ -266,7 +268,7 @@ def transcribir_assemblyai(ruta: str, intervinientes: list[dict] | None = None) 
         # fundir a dos en una no, porque el generador propaga la etiqueta a un nombre real.
         # Mínimo 6 = suelo de la corporación; máximo 15 = margen sobre las ~12 voces reales.
         "speaker_options": {"min_speakers_expected": 6, "max_speakers_expected": 15},
-        "prompt": AAI_PROMPT,
+        "prompt": aai_prompt(corporacion.en_uso()),
         "keyterms_prompt": keyterms_del_pleno(intervinientes),
         "custom_spelling": AAI_SPELLING,
     }

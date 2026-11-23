@@ -367,9 +367,10 @@ test("rutas: la auditoría de vuelta recibe el campo que el corrector tocó",
 # ── funciones puras del pipeline ──────────────────────────────────────────────
 print("── pipeline: fecha, segmentos, esperas ───────────────────────────────")
 
+import corporacion as _co
 from procesar_pleno import (
     extraer_fecha, unir_segmentos, formatear_utterances, extraer_video_id,
-    _espera_tras_error, ESPERA_MAXIMA, AAI_SPELLING, AAI_KEYTERMS, AAI_PROMPT,
+    _espera_tras_error, ESPERA_MAXIMA, AAI_SPELLING, AAI_VOCABULARIO, aai_prompt,
 )
 
 test("fecha: dd/mm/yyyy", extraer_fecha("Pleno ordinario 26/06/2026", "2026-01-01"), "2026-06-26")
@@ -399,9 +400,12 @@ test("custom_spelling: `to` de una sola palabra",
      [c["to"] for c in AAI_SPELLING if len(c["to"].split()) != 1], [])
 # Tope de la API: 1000 términos y 6 palabras por término.
 test("keyterms: dentro de los topes de la API",
-     (len(AAI_KEYTERMS) <= 1000, max(len(k.split()) for k in AAI_KEYTERMS) <= 6),
+     (len(AAI_VOCABULARIO) <= 1000, max(len(k.split()) for k in AAI_VOCABULARIO) <= 6),
      (True, True))
+test("vocabulario: ningún nombre de persona de la corporación",
+     [k for k in AAI_VOCABULARIO if k in _co.nombres_y_apodos(_co.semilla())], [])
 
+AAI_PROMPT = aai_prompt(_co.semilla())
 # El contexto debe avisar de que hay público que a veces interviene, no solo la Corporación.
 test("AAI_PROMPT: menciona que asiste público", "público" in AAI_PROMPT, True)
 test("AAI_PROMPT: menciona que intervienen vecinos",
@@ -572,8 +576,8 @@ _tablas, _parrafos = _acta_generada(informe)
 test("acta: tipo de convocatoria", "Ordinaria" in _tablas[2], True)
 test("acta: fecha en la cabecera", "26 de junio de 2026" in _tablas[2], True)
 test("acta: duración rellena", "Desde las 12:00 hasta las 13:30 horas" in _tablas[2], True)
-test("acta: presidente de la grabación en mayúsculas, como la celda de la plantilla",
-     "SERGIO DE FEZ CEREZUELA" in _tablas[2], True)
+test("acta: «Presidida por» es quien preside según la corporación, en mayúsculas, aunque la grabación nombre a otro",
+     ("LORENA LUJÁN CHUJFI" in _tablas[2], "SERGIO DE FEZ CEREZUELA" in _tablas[2]), (True, False))
 test("acta: expediente en blanco", "PLN/2026/" in _tablas[1], False)
 test("acta: expediente sustituido por el hueco", HUECO in _tablas[1], True)
 # El acta lista los puntos seguidos, sin las bandas A) / B) / C).
@@ -606,17 +610,15 @@ test("acta: sin ruegos no quedan secciones huérfanas",
      any("No hay asuntos" in t for t in _tablas_sr), False)
 test("acta: la plantilla queda en cinco tablas", len(_tablas_sr), 5)
 
-# Decisión de la spec: sin presidente identificado, "Presidida por" conserva el nombre de la plantilla
-# (la secretaria revisa el borrador a mano antes de sellarlo).
 _sin_presidente = InformePleno.model_validate(dict(INFORME_MINIMO, presidente=None))
 _tablas_sp, _ = _acta_generada(_sin_presidente)
-test("acta: sin presidente en la grabación conserva el de la plantilla",
+test("acta: presidida por sale de la corporación aunque el modelo no identifique a nadie",
      "LORENA LUJÁN CHUJFI" in _tablas_sp[2], True)
 
 # La fórmula de cierre nombra a quien preside desde la corporación en vez de dejar un hueco.
 _cierre_sp = formula_cierre(_sin_presidente)
 test("acta: el cierre nombra a quien preside aunque la grabación no lo diga",
-     corporacion.tratamiento_presidencia(corporacion.semilla()) in _cierre_sp, True)
+     _co.tratamiento_presidencia(_co.semilla()) in _cierre_sp, True)
 test("acta: el cierre nunca deja el hueco en la presidencia",
      f"acto, {HUECO} levanta" in _cierre_sp, False)
 test("acta: la fórmula de escape no llega al cierre como si fuera un nombre",
@@ -1162,7 +1164,6 @@ test("generador: el resultado se conserva aunque los números vayan a null",
      "ese resultado se escribe aunque los números vayan a `null`" in _pg, True)
 
 # Dos concejales comparten apellido: el apellido solo no identifica a ninguno.
-import corporacion as _co
 test("corporación: avisa de que hay dos Martínez",
      "son DOS personas distintas que comparten apellido" in _co.bloque_corporacion(_co.semilla()), True)
 test("corporación: REGLAS_CORPORACION llega al auditor",
@@ -2393,7 +2394,6 @@ finally:
 
 
 # La presidenta de la Asociación de Jubilados es concejala, no público.
-import corporacion as _co
 _bloque_semilla = _co.bloque_corporacion(_co.semilla())
 test("corporación: dice que la presidenta de los jubilados es la concejala Chari",
      "Asociación de Jubilados" in _bloque_semilla
@@ -2545,6 +2545,19 @@ test("intervinientes: generador, auditor y corrector reciben el bloque antes de 
       and "INTERVINIENTES DE ESTA SESIÓN" in c.split("TRANSCRIPCIÓN DEL PLENO")[0] for c in _enviados],
      [True, False, True, False, True, False])
 
+_enviados.clear()
+_pi_iv._llamar_llm = lambda sistema, contenido, *a, **k: (_enviados.append(contenido),
+                                                            (_ for _ in ()).throw(StopIteration))[1]
+try:
+    _pi_iv.auditar_atribuciones("T", _pi_iv.InformePleno.model_construct(), intervinientes=_iv)
+except (StopIteration, RuntimeError):
+    pass
+_pi_iv._llamar_llm = _llamar_orig
+test("atribuciones: el mensaje empieza por la corporación y lleva los intervinientes",
+     [c.startswith("CORPORACIÓN MUNICIPAL")
+      and "INTERVINIENTES DE ESTA SESIÓN" in c.split("TRANSCRIPCIÓN DEL PLENO")[0] for c in _enviados],
+     [True])
+
 for _rol in ("PROMPT_GENERADOR", "PROMPT_AUDITOR", "PROMPT_CORRECTOR"):
     _t = getattr(_pi_iv, _rol)
     test(f"{_rol}: lleva las reglas de intervinientes y el listado de la Corporación",
@@ -2568,22 +2581,9 @@ test("keyterms: toponimos fijos + nombres y apodos del pleno, sin duplicados",
      all(t in _kt for t in ("Pesquera", "Las Chorreras", "Playeta", "Keltiber", "PR-53",
                             "GR-64", "GR-66", "Nando", "Chari", "Fernando Pons Mayor"))
      and len(_kt) == len({t.lower() for t in _kt}), True)
-test("keyterms: sin intervinientes quedan los fijos", _pp_iv.keyterms_del_pleno(None),
-     list(dict.fromkeys(_pp_iv.AAI_KEYTERMS)))
-
-
-from plenos_acta import normalizar_cargos as _nc, tipografia as _tip
-test("cargos: «la Sra. Alcaldesa» pasa a la Teniente de Alcalde",
-     _nc("La Sra. Alcaldesa da cuenta del decreto."), "La Sra. Teniente de Alcalde da cuenta del decreto.")
-test("cargos: «en funciones» y minúsculas también",
-     _nc("Responde la alcaldesa en funciones que sí."), "Responde la Sra. Teniente de Alcalde que sí.")
-test("cargos: una cita entre comillas se respeta",
-     _nc("lamenta el uso de términos como “alcaldesa accidental” para referirse a ella."),
-     "lamenta el uso de términos como “alcaldesa accidental” para referirse a ella.")
-test("cargos: lo que ya está bien no cambia",
-     _nc("La Sra. Teniente de Alcalde propone."), "La Sra. Teniente de Alcalde propone.")
-test("tipografía: comillas rectas y cargos a la vez",
-     _tip('La alcaldesa dice "sí"'), "La Sra. Teniente de Alcalde dice “sí”")
+test("keyterms: sin intervinientes quedan los de la corporación y el vocabulario",
+     _pp_iv.keyterms_del_pleno(None),
+     list(dict.fromkeys([*_co.nombres_y_apodos(_co.semilla()), *_pp_iv.AAI_VOCABULARIO])))
 
 
 # ── votaciones coherentes, calificaciones vetadas y fecha (acta del 3-IX, 2.ª vuelta) ──
@@ -2879,7 +2879,7 @@ test("bloque: prohíbe llamar Alcaldesa a quien preside sin ser titular",
      "NUNCA se la nombra así" in _b, True)
 test("bloque con alcaldesa titular no prohíbe Alcaldesa",
      "NUNCA se la nombra así" in _co.bloque_corporacion(_alcaldesa), False)
-test("voces: mismo formato que PERSONAS_VOZ",
+test("voces: la primera es quien preside, con tratamiento y etiqueta (preside)",
      _co.personas_voz(_s)[0], ("Dª Lorena Luján Chujfi", "Lorena Luján Chujfi (preside)", ""))
 test("voces: incluye a la secretaria al final",
      _co.personas_voz(_s)[-1][1], "Mª Elena Valera Navarro (Secretaria)")
@@ -2930,6 +2930,42 @@ test("tres con el mismo apellido: TRES", "son TRES personas distintas" in _co.bl
 _t6 = _s.model_copy(deep=True)
 _t6.miembros[3].cargo, _t6.miembros[3].orden_teniente = "teniente", 6
 test("sexto teniente sin KeyError", _co.cargo_en_texto(_t6.miembros[3]), "6.º Teniente de Alcalde")
+
+
+from plenos_acta import normalizar_cargos as _nc, tipografia as _tip
+test("cargos: «la Sra. Alcaldesa» pasa a la Teniente de Alcalde",
+     _nc("La Sra. Alcaldesa da cuenta del decreto."), "La Sra. Teniente de Alcalde da cuenta del decreto.")
+test("cargos: «en funciones» y minúsculas también",
+     _nc("Responde la alcaldesa en funciones que sí."), "Responde la Sra. Teniente de Alcalde que sí.")
+test("cargos: una cita entre comillas se respeta",
+     _nc("lamenta el uso de términos como “alcaldesa accidental” para referirse a ella."),
+     "lamenta el uso de términos como “alcaldesa accidental” para referirse a ella.")
+test("cargos: lo que ya está bien no cambia",
+     _nc("La Sra. Teniente de Alcalde propone."), "La Sra. Teniente de Alcalde propone.")
+test("tipografía: comillas rectas y cargos a la vez",
+     _tip('La alcaldesa dice "sí"'), "La Sra. Teniente de Alcalde dice “sí”")
+
+_co.usar(_alcaldesa)
+test("cargos: con Alcaldesa titular no se toca", _nc("La Sra. Alcaldesa da cuenta."), "La Sra. Alcaldesa da cuenta.")
+_co.usar(_co.semilla())
+test("cargos: sin Alcaldesa se sigue sustituyendo",
+     _nc("La Sra. Alcaldesa da cuenta del decreto."), "La Sra. Teniente de Alcalde da cuenta del decreto.")
+
+_otra = _co.semilla().model_copy(deep=True)
+_otra.secretaria = _co.Secretaria(nombre="Juan Pérez Gómez", sexo="hombre")
+_co.usar(_otra)
+_tablas_o, _parr_o = _acta_generada(informe)
+test("acta: la fila de secretaría sale de la corporación",
+     ("Secretario" in _tablas_o[2], "JUAN PÉREZ GÓMEZ" in _tablas_o[2], "VALERA" in _tablas_o[2]),
+     (True, True, False))
+test("acta: cierre en masculino", "como Secretario – Interventor, doy fe" in _parr_o, True)
+test("acta: presidida por sale de la corporación", "LORENA LUJÁN CHUJFI" in _tablas_o[2], True)
+_co.usar(_co.semilla())
+test("aai_prompt: seis concejales con la semilla", "seis concejales" in _pp_iv.aai_prompt(_co.semilla()), True)
+test("aai_prompt: el número sale de la corporación",
+     "siete concejales" in _pp_iv.aai_prompt(_co.Corporacion.model_validate(
+         dict(_co.semilla().model_dump(), miembros=[*_co.semilla().model_dump()["miembros"],
+              dict(nombre="Ana Ruiz Gil", sexo="mujer", cargo="concejal", partido="X", grupo="oposicion")]))), True)
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────
