@@ -55,11 +55,13 @@ def fecha_larga(iso: str) -> str:
     return f"{d} de {_MESES_NOMBRE[m]} de {a}"
 
 
+import os
 import re
+import tempfile
 from pathlib import Path
 
 import corporacion
-from plenos_informe import InformePleno, Votacion
+from plenos_informe import BloqueRuegos, InformePleno, PuntoOrdenDia, Votacion
 
 PLANTILLAS_DIR = Path(__file__).resolve().parent / "plantillas"
 PLANTILLAS = {"ordinaria": "acta_ordinaria.docx",
@@ -309,7 +311,16 @@ def _parrafo_con_texto(doc, texto: str):
 
 # ── render ────────────────────────────────────────────────────────────────────
 
-def render_acta(informe: InformePleno, ruta_salida: str) -> None:
+def ruta_plantilla(tipo: str) -> Path:
+    propias = os.environ.get("PLANTILLAS_PROPIAS")
+    if propias:
+        propia = Path(propias) / PLANTILLAS[tipo]
+        if propia.exists():
+            return propia
+    return PLANTILLAS_DIR / PLANTILLAS[tipo]
+
+
+def render_acta(informe: InformePleno, ruta_salida: str, plantilla: Path | None = None) -> None:
     """Rellena la plantilla oficial con los datos del informe."""
     from docx import Document
 
@@ -317,7 +328,7 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
         raise ValueError(
             "no se puede elegir plantilla: el tipo de sesión no consta en la grabación")
 
-    doc = Document(str(PLANTILLAS_DIR / PLANTILLAS[informe.tipo_sesion]))
+    doc = Document(str(plantilla or ruta_plantilla(informe.tipo_sesion)))
 
     # El PLN/2026/N de la plantilla es un ejemplo: lo rellena la secretaria.
     _poner_celda(doc.tables[_T_EXPEDIENTE].rows[1].cells[0], HUECO)
@@ -375,3 +386,32 @@ def render_acta(informe: InformePleno, ruta_salida: str) -> None:
             sangria=True)
 
     doc.save(ruta_salida)
+
+
+# ── validación de plantillas propias ──────────────────────────────────────────
+
+def _informe_de_prueba(tipo: str) -> InformePleno:
+    return InformePleno(
+        tipo_sesion=tipo, motivo_convocatoria="Motivo de prueba" if tipo == "extraordinaria" else None,
+        solicitantes=[], fecha_pleno="2026-01-15", hora_inicio="19:00", hora_fin="20:30",
+        presidente=None, asistentes=[], ausentes=[], declaraciones_apertura=[],
+        orden_del_dia=[PuntoOrdenDia(
+            numero=1, parte="resolutiva", titulo="PUNTO DE PRUEBA", texto="Se debate el asunto.",
+            acuerdo="aprobar el asunto de prueba",
+            votacion=Votacion(resultado="aprobado", modalidad="unanimidad", a_favor=None,
+                              en_contra=None, abstenciones=None, timestamp=None))],
+        ruegos_y_preguntas=[BloqueRuegos(formulados_por="no identificado en la grabación",
+                                         puntos=["Un ruego de prueba."])],
+        resumen_corto="Informe de prueba.")
+
+
+def validar_plantilla(ruta: Path, tipo: str) -> str | None:
+    """None si la plantilla sirve; si no, el motivo en lenguaje llano."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            render_acta(_informe_de_prueba(tipo), str(Path(tmp) / "prueba.docx"), plantilla=ruta)
+    except IndexError:
+        return "a la plantilla le faltan tablas del modelo original"
+    except Exception as e:
+        return str(e) or "el fichero no es una plantilla de Word válida"
+    return None

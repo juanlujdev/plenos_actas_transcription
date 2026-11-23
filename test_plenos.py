@@ -2967,6 +2967,21 @@ test("aai_prompt: el número sale de la corporación",
          dict(_co.semilla().model_dump(), miembros=[*_co.semilla().model_dump()["miembros"],
               dict(nombre="Ana Ruiz Gil", sexo="mujer", cargo="concejal", partido="X", grupo="oposicion")]))), True)
 
+from plenos_acta import validar_plantilla, ruta_plantilla, PLANTILLAS_DIR
+test("plantilla original es válida", validar_plantilla(PLANTILLAS_DIR / "acta_ordinaria.docx", "ordinaria"), None)
+_rota = _Path(_tf.mkdtemp()) / "rota.docx"
+_d = _Document(str(PLANTILLAS_DIR / "acta_ordinaria.docx"))
+for _p in _d.paragraphs:
+    if _p.text.strip() == HUECO: _p.text = "cambiado"
+_d.save(str(_rota))
+test("plantilla sin el hueco se rechaza con motivo", "___________" in (validar_plantilla(_rota, "ordinaria") or ""), True)
+_falso = _rota.parent / "falso.docx"
+_falso.write_text("esto no es un Word", encoding="utf-8")
+test("un fichero que no es Word se rechaza con motivo", bool(validar_plantilla(_falso, "ordinaria")), True)
+os.environ["PLANTILLAS_PROPIAS"] = str(_rota.parent)
+test("sin propia de ese nombre usa la empaquetada", ruta_plantilla("ordinaria"), PLANTILLAS_DIR / "acta_ordinaria.docx")
+del os.environ["PLANTILLAS_PROPIAS"]
+
 
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
