@@ -304,3 +304,5 @@ Se quitó y se volvió a poner el mismo día; tras probarla se decide conservarl
 entrega nueva completa a la secretaria. CLAUDE.md actualizado.
 
 ## [2026-11-23] decisión | Corporación, presidencia y plantillas configurables
+La corporación, quién preside y las plantillas pasan de constantes en código a datos editables
+desde el asistente (opción 3), con semilla inmutable. Página: [[corporacion-configurable]].

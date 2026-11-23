@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-07
+date_updated: 2026-11-23
 source_count: 6
 ---
 
@@ -144,7 +144,7 @@ validación*: `InformePleno._presidente_o_nada`, un `field_validator` que normal
 leían el campo, porque los dos ya guardaban contra `None`.
 
 Y una decisión de forma en el render: `formula_cierre` pasó de `or HUECO` a
-`or PRESIDENCIA["tratamiento"]`. El acta ya afirma "la Presidenta abre la sesión" desde
+`or PRESIDENCIA["tratamiento"]` (entonces; hoy `corporacion.tratamiento_presidencia`, ver [[corporacion-configurable]]). El acta ya afirma "la Presidenta abre la sesión" desde
 `PRESIDENCIA` sin pedirle permiso a la grabación —es un dato curado a mano, que se revisa
 cada vez que cambia quién preside— así que **el cierre no tiene por qué ser más tímido que la
 apertura**. Es el mismo criterio, aplicado en la misma sesión, que la celda "Presidida por"

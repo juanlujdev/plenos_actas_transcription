@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-10-08
+date_updated: 2026-11-23
 source_count: 1
 ---
 
@@ -31,9 +31,9 @@ AssemblyAI antes de que lo destroce.
 ## Decisión sobre el cargo de quien preside
 
 Se pidió «Lorena alcaldesa, Sergio concejal». Se mantuvo **Teniente de Alcalde por
-delegación** (el nombramiento real; ver el gotcha de `PRESIDENCIA` en CLAUDE.md): Fernando
-pidió unificar la forma, no un cargo concreto. Cualquier cambio se hace solo en `PRESIDENCIA`
-y `CORPORACION`.
+delegación** (el nombramiento real; ver el gotcha de la presidencia en CLAUDE.md): Fernando
+pidió unificar la forma, no un cargo concreto. Cualquier cambio se hace ahora desde la opción 3 del
+asistente (corporación en `corporacion.py`; ver [[corporacion-configurable]]), ya no en constantes.
 
 ## Qué NO se cambió
 

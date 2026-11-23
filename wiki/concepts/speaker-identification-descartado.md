@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-09
+date_updated: 2026-11-23
 source_count: 1
 ---
 
@@ -23,7 +23,7 @@ un `mapping` de etiqueta a nombre.
 
 Es decir: **la misma inferencia textual que ya hace el generador** al rellenar
 `identificacion_locutores` (ver [[diarizacion-como-andamiaje]]), hecha por otro modelo con
-menos contexto — sin la convocatoria, sin `CORPORACION`, sin la jerarquía de pruebas ni la
+menos contexto — sin la convocatoria, sin el bloque de la corporación (`bloque_corporacion`), sin la jerarquía de pruebas ni la
 regla de exclusión.
 
 ## Las cuatro razones

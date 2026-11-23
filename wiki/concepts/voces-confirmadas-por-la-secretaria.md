@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-10-12
+date_updated: 2026-11-23
 source_count: 1
 ---
 
@@ -39,7 +39,7 @@ como prueba (a diferencia de los intervinientes, que son pista:
 - Tras transcribir y guardar, el asistente **se detiene** y, por cada etiqueta con 3 o más
   intervenciones, enseña 5 frases con su minuto **repartidas por toda la sesión** (no las
   primeras: un cambio de voz entre tramos delata una etiqueta mezclada) y, si hay vídeo de
-  YouTube, el enlace al segundo. Opciones: los 8 de `PERSONAS_VOZ` (nombre, cargo y apodos),
+  YouTube, el enlace al segundo. Opciones: los de `personas_voz(corporación)` (ver [[corporacion-configurable]]) (nombre, cargo y apodos),
   «Público», «Varias personas mezcladas» y «No lo sé» (no se incluye y se infiere como
   siempre). Termina con un resumen y «¿Es correcto?».
 - Va a `entrada.json` (`voces`) **antes** del bucle y se inyecta como

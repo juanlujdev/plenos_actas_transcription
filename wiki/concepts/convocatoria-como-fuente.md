@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-08-22
+date_updated: 2026-11-23
 source_count: 1
 ---
 
@@ -24,7 +24,7 @@ lo marcaría como afirmación no respaldada. Las tres vueltas de
 [[bucle-generador-auditor-corrector]] se quemarían sin arreglar nada y el acta saldría
 peor que sin convocatoria.
 
-**Es exactamente el mismo fallo que ya obligó a pasarle `CORPORACION` al auditor** cuando
+**Es exactamente el mismo fallo que ya obligó a pasarle la corporación al auditor (hoy `bloque_corporacion` en el mensaje)** cuando
 se añadió el listado de la corporación para corregir los nombres. Segundo caso del mismo
 patrón, y por eso vale la pena enunciarlo como regla general:
 
@@ -103,7 +103,7 @@ La convocatoria se guarda en `uploads/actas/<fecha>/<fecha>-convocatoria.pdf` pa
 No la debilita, la complementa. [[via-de-escape-en-el-esquema]] impide que el modelo
 invente lo que no sabe; la convocatoria hace que **haya menos cosas que no sepa**, y lo
 hace con un documento oficial del Ayuntamiento, no con una deducción del modelo. Es la
-misma categoría que `CORPORACION`: una fuente autorizada, no una excepción al principio.
+misma categoría que la corporación (`bloque_corporacion`): una fuente autorizada, no una excepción al principio.
 
 Además desbloquea dos huecos que hoy son trabajo manual o callejón sin salida:
 

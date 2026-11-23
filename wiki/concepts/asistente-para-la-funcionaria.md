@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-10-10
+date_updated: 2026-11-23
 source_count: 2
 ---
 
@@ -281,3 +281,7 @@ Tras transcribir, se detiene a pedir a la secretaria que confirme quién es cada
 [[pipeline-plenos]], [[pleno-en-varias-grabaciones-y-mismo-dia]], [[guia-de-verificacion]], [[diarizacion-como-andamiaje]],
 [[por-que-plenos-en-local]], [[persistir-lo-caro-antes-de-lo-fragil]],
 [[2026-09-15-claves-del-ayuntamiento-y-errores-http]]
+
+## Opción 3: corporación y plantillas
+
+El menú incluye «Cambiar la corporación o las plantillas»: edita la corporación y sustituye las plantillas `.docx` sin tocar código ni reconstruir el `.exe`. Ver [[corporacion-configurable]].

@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-09-09
+date_updated: 2026-11-23
 source_count: 1
 ---
 
@@ -44,7 +44,7 @@ fidelidad, sino cuánta información hay para aplicarla.
 
 ## Por qué el auditor también lo recibe
 
-Es el mismo patrón que ya obligó a dar `CORPORACION` y la convocatoria al auditor (ver
+Es el mismo patrón que ya obligó a dar la corporación (`bloque_corporacion`) y la convocatoria al auditor (ver
 [[bucle-generador-auditor-corrector]] y [[convocatoria-como-fuente]]):
 
 > Toda fuente autorizada que se le dé al generador para que escriba algo que la
@@ -94,11 +94,11 @@ de la Diputación para asociaciones de jubilados?"* — y lo confirmó el desarr
 etiqueta fundía a **dos concejalas**, no a una concejala y una vecina.
 
 El diagnóstico de la mezcla seguía siendo correcto; la identidad de la segunda voz, no. Y
-esa confusión no era casual: el bloque PÚBLICO ASISTENTE de `CORPORACION` ponía como ejemplo
+esa confusión no era casual: el bloque PÚBLICO ASISTENTE de la corporación (entonces `CORPORACION`) ponía como ejemplo
 de cómo nombrar a alguien del público, literalmente, *"la presidenta de la Asociación de
 Jubilados"* — el único cargo del pueblo que lo ostenta una concejala. En la corrida del
 2026-09-08 el acta volvió a atribuir esos ruegos a ese cargo, sin nombre, como si fueran de
-una vecina. Desde entonces `CORPORACION` dice quién es (y el ejemplo del público es otro),
+una vecina. Desde entonces la corporación (`bloque_corporacion`) dice quién es (y el ejemplo del público es otro),
 así que la grabación y el listado ya no se contradicen. Los socios de la asociación que
 asisten como público y hablan de sus mismos asuntos **sí** son vecinos: la regla distingue a
 la presidenta de sus socios.
