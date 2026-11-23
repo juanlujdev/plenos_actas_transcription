@@ -347,11 +347,31 @@ def nombres_y_apodos(corp: Corporacion) -> list[str]:
     return list(dict.fromkeys(nombres))
 
 
+def _motivo_presidencia(corp: Corporacion) -> str:
+    alcalde = _por_sexo(corp.alcalde(), "del Alcalde", "de la Alcaldesa")
+    return {"titular": _por_sexo(corp.alcalde(), "Alcalde", "Alcaldesa"),
+            "delegacion": f"por delegación {alcalde}",
+            "ausencia": f"en sustitución {alcalde} por ausencia"}[corp.presidencia.motivo]
+
+
+def aviso_presidencia(corp: Corporacion) -> str:
+    return (f"Preside: {corp.presidencia.persona} ({_motivo_presidencia(corp)}). "
+            f"Si no es así, cancela y cámbialo en la opción 3 del menú.")
+
+
 def resumen(corp: Corporacion) -> list[str]:
     lineas = []
     for p in _ordenados(corp):
         grupo = "gobierno" if p.grupo == "gobierno" else "oposición"
-        extra = " — preside" if p is corp.quien_preside() else ""
-        lineas.append(f"{p.nombre} — {cargo_en_texto(p)} ({p.partido}, {grupo}){extra}")
-    lineas.append(f"{corp.secretaria.nombre} — {cargo_secretaria(corp)}")
+        extra = f" — preside ({_motivo_presidencia(corp)})" if p is corp.quien_preside() else ""
+        linea = f"{p.nombre} — {cargo_en_texto(p)} ({p.partido}, {grupo}){extra}"
+        if p.apodos:
+            linea += f" — le llaman: {', '.join(p.apodos)}"
+        if p.situacion:
+            linea += f" — {p.situacion}"
+        lineas.append(linea)
+    secretaria = f"{corp.secretaria.nombre} — {cargo_secretaria(corp)}"
+    if corp.secretaria.apodos:
+        secretaria += f" — le llaman: {', '.join(corp.secretaria.apodos)}"
+    lineas.append(secretaria)
     return lineas

@@ -2594,7 +2594,9 @@ test("keyterms: toponimos fijos + nombres y apodos del pleno, sin duplicados",
      and len(_kt) == len({t.lower() for t in _kt}), True)
 test("keyterms: sin intervinientes quedan los de la corporación y el vocabulario",
      _pp_iv.keyterms_del_pleno(None),
-     list(dict.fromkeys([*_co.nombres_y_apodos(_co.semilla()), *_pp_iv.AAI_VOCABULARIO])))
+     list(dict.fromkeys([*(n.replace("Mª", "María") for n in _co.nombres_y_apodos(_co.semilla())),
+                         *_pp_iv.AAI_VOCABULARIO])))
+test("keyterms: «Mª» se dice «María»", ("María Rosario Cerdán Pérez" in _kt, any("Mª" in t for t in _kt)), (True, False))
 
 
 # ── votaciones coherentes, calificaciones vetadas y fecha (acta del 3-IX, 2.ª vuelta) ──
@@ -2900,6 +2902,16 @@ test("voces: incluye a la secretaria al final",
 test("voces: apodos de la secretaria", _co.personas_voz(_s)[-1][2], "Elena")
 test("keyterms: nombres y apodos", {"Fernando Pons Mayor", "Chari", "Nando", "Elena"} <= set(_co.nombres_y_apodos(_s)), True)
 test("resumen: una línea por miembro y la secretaria", len(_co.resumen(_s)), 8)
+test("resumen: la presidencia dice por qué", "preside (por delegación del Alcalde)" in _co.resumen(_s)[0], True)
+test("resumen: apodos y situación", ("le llaman: Chari" in _co.resumen(_s)[2], "de baja médica" in _co.resumen(_s)[1]), (True, True))
+test("resumen: apodos de la secretaria", _co.resumen(_s)[-1].endswith("le llaman: Elena"), True)
+test("aviso de presidencia: delegación", _co.aviso_presidencia(_s),
+     "Preside: Lorena Luján Chujfi (por delegación del Alcalde). Si no es así, cancela y cámbialo en la opción 3 del menú.")
+_d_pres = _s.model_dump()
+_d_pres["presidencia"] = {"persona": "Sergio de Fez Cerezuela", "motivo": "titular"}
+test("aviso de presidencia: titular", "(Alcalde)" in _co.aviso_presidencia(_co.Corporacion.model_validate(_d_pres)), True)
+_d_pres["presidencia"] = {"persona": "Lorena Luján Chujfi", "motivo": "ausencia"}
+test("aviso de presidencia: ausencia", "(en sustitución del Alcalde por ausencia)" in _co.aviso_presidencia(_co.Corporacion.model_validate(_d_pres)), True)
 
 _bs = _co.bloque_corporacion(_s)
 test("bloque: apodo de Chari", 'se dirigen a ella como "Chari"' in _bs and 'se la nombra siempre "Dª Mª Rosario Cerdán Pérez"' in _bs, True)
@@ -2989,6 +3001,14 @@ for _p in _d.paragraphs:
     if _p.text.strip() == HUECO: _p.text = "cambiado"
 _d.save(str(_rota))
 test("plantilla sin el hueco se rechaza con motivo", "___________" in (validar_plantilla(_rota, "ordinaria") or ""), True)
+test("plantilla extraordinaria como ordinaria se rechaza",
+     validar_plantilla(PLANTILLAS_DIR / "acta_extraordinaria.docx", "ordinaria"),
+     "Esa plantilla es la del pleno extraordinario.")
+test("plantilla ordinaria como extraordinaria se rechaza",
+     validar_plantilla(PLANTILLAS_DIR / "acta_ordinaria.docx", "extraordinaria"),
+     "Esa plantilla es la del pleno ordinario.")
+test("plantilla extraordinaria original es válida",
+     validar_plantilla(PLANTILLAS_DIR / "acta_extraordinaria.docx", "extraordinaria"), None)
 _falso = _rota.parent / "falso.docx"
 _falso.write_text("esto no es un Word", encoding="utf-8")
 test("un fichero que no es Word se rechaza en español",

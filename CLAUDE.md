@@ -147,7 +147,7 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
 - **Las plantillas `.docx` se pueden sustituir desde el asistente** (`PLANTILLAS_PROPIAS`
   apunta a la carpeta). Una plantilla nueva se valida renderizando un acta de prueba
   (`validar_plantilla`), no mirando su estructura: lo que importa es que `render_acta` la
-  rellene.
+  rellene; además comprueba que sea del tipo (ordinario/extraordinario) que sustituye.
 - **Costes: `costes.py`.** El asistente muestra el coste habitual y el real de cada pleno.
   Un coste que la API no devuelve se muestra «no disponible» y no entra en el promedio (no
   se cuenta como 0,00 $). No se consulta el saldo de AssemblyAI/OpenRouter: la primera no

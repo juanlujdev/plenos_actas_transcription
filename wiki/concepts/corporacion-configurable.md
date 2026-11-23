@@ -30,6 +30,13 @@ plantillas»); ver [[asistente-para-la-funcionaria]].
   caen a la semilla, que es justo la que se usó.
 - **La plantilla se valida por render de prueba**, no por inspección de su estructura: lo que
   importa es que `render_acta` pueda rellenarla.
+- **La plantilla sustituta tiene que ser del tipo que se sustituye.** `validar_plantilla`
+  comprueba la celda «Tipo Convocatoria» (empieza por «Ordinaria» o «Extraordinaria») antes
+  del render, porque `render_acta` no la escribe en un ordinario y una plantilla de
+  extraordinario pasaría por buena.
+- **Antes de empezar un pleno se avisa de quién preside y por qué**
+  (`corporacion.aviso_presidencia`), junto al coste habitual, para poder cancelar y corregirlo
+  en la opción 3.
 - **No se consulta el saldo** de AssemblyAI ni OpenRouter: la primera no tiene API de saldo y la
   segunda exige management key o límite de gasto en la clave.
 - **«Alcaldesa»**: `normalizar_cargos` solo actúa cuando la corporación no tiene Alcaldesa

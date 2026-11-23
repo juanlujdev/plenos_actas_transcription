@@ -245,6 +245,7 @@ def keyterms_del_pleno(intervinientes: list[dict] | None) -> list[str]:
     extra = [t for p in intervinientes or [] for t in (p["nombre"], *p.get("apodos", []))]
     vistos, salida = set(), []
     for t in [*nombres_y_apodos(en_uso()), *AAI_VOCABULARIO, *extra]:
+        t = t.replace("Mª", "María")
         if 0 < len(t.split()) <= 6 and t.lower() not in vistos:
             vistos.add(t.lower())
             salida.append(t)
@@ -608,7 +609,11 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     else:
         _banner("SUCCESS", "acta generada y sin objeciones del auditor.")
 
-    coste = costes.guardar(destino)
+    try:
+        coste = costes.guardar(destino)
+    except OSError as e:
+        print(f"AVISO: no se pudo guardar el coste de esta ejecución ({e}).")
+        coste = costes.actual()
     return ResultadoPleno(destino, ruta_acta, pendientes, ruta_guia, objeciones,
                           fallo_acta, coste)
 
@@ -759,6 +764,9 @@ def main() -> int:
                              "persona por línea: 'Nombre completo = cómo la llaman'. Ayuda "
                              "al transcriptor y al redactor a reconocer nombres y apodos")
     args = parser.parse_args()
+    ruta_corporacion = os.environ.get("CORPORACION_JSON")
+    print("corporación: " + (ruta_corporacion if ruta_corporacion and Path(ruta_corporacion).exists()
+                             else "semilla (corporacion_inicial.json)"))
     intervinientes = leer_intervinientes(args.intervinientes)
     tipo = "extraordinaria" if args.extraordinario else "ordinaria"
 

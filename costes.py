@@ -25,10 +25,14 @@ def _leer(ruta: Path) -> list[dict]:
     return datos if isinstance(datos, list) else []
 
 
+def actual() -> dict:
+    return {"fecha_hora": datetime.now().isoformat(timespec="seconds"),
+            "assemblyai": _acumulado.get("assemblyai"),
+            "openrouter": _acumulado.get("openrouter")}
+
+
 def guardar(carpeta: Path) -> dict:
-    entrada = {"fecha_hora": datetime.now().isoformat(timespec="seconds"),
-               "assemblyai": _acumulado.get("assemblyai"),
-               "openrouter": _acumulado.get("openrouter")}
+    entrada = actual()
     ruta = carpeta / "costes.json"
     ruta.write_text(json.dumps(_leer(ruta) + [entrada], indent=2), encoding="utf-8")
     return entrada

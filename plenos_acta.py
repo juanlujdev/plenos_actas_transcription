@@ -412,9 +412,13 @@ def _informe_de_prueba(tipo: str) -> InformePleno:
 
 def validar_plantilla(ruta: Path, tipo: str) -> str | None:
     """None si la plantilla sirve; si no, el motivo en lenguaje llano."""
+    from docx import Document
     from docx.opc.exceptions import PackageNotFoundError
 
     try:
+        celda_tipo = Document(str(ruta)).tables[_T_DATOS].rows[_FILA_TIPO].cells[1].text
+        if not celda_tipo.strip().lower().startswith(tipo):
+            return f"Esa plantilla es la del pleno {'ordinario' if tipo == 'extraordinaria' else 'extraordinario'}."
         with tempfile.TemporaryDirectory() as tmp:
             render_acta(_informe_de_prueba(tipo), str(Path(tmp) / "prueba.docx"), plantilla=ruta)
     except (PackageNotFoundError, zipfile.BadZipFile):

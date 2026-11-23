@@ -661,6 +661,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
     intervinientes = preguntar_intervinientes(consola)
     consola.decir(AVISO_DURACION)
     anunciar_coste_habitual(consola)
+    consola.decir(f"\n   {corporacion.aviso_presidencia(corporacion.en_uso())}\n")
     if not input("   ¿Empezamos?  (s/n)  ").strip().lower().startswith("s"):
         consola.decir("\n   No se ha hecho nada.")
         consola.cerrar()
@@ -964,9 +965,10 @@ def preguntar_persona(consola: Consola, actual: Persona | None = None, campos=No
 def preguntar_secretaria(consola: Consola, actual: Secretaria) -> Secretaria:
     nombre = _texto(consola, "Nombre y apellidos de la Secretaria o el Secretario, sin «D.» ni «Dª»:",
                     actual.nombre, obligatorio=True)
+    sexo = _preguntar_sexo(consola)
     if nombre == actual.nombre:
-        return Secretaria(nombre=nombre, sexo=actual.sexo, apodos=_preguntar_apodos(consola, actual.apodos))
-    return Secretaria(nombre=nombre, sexo=_preguntar_sexo(consola), apodos=_preguntar_apodos(consola, None))
+        return Secretaria(nombre=nombre, sexo=sexo, apodos=_preguntar_apodos(consola, actual.apodos))
+    return Secretaria(nombre=nombre, sexo=sexo, apodos=_preguntar_apodos(consola, None))
 
 
 def preguntar_presidencia(consola: Consola, miembros: list[Persona]) -> Presidencia:
@@ -1012,7 +1014,13 @@ def _confirmar_y_guardar(consola: Consola, inst: Instalacion, nueva: Corporacion
     if not input("\n   ¿Guardar?  (s/n)  ").strip().lower().startswith("s"):
         consola.decir("\n   No se ha guardado nada.")
         return
-    corporacion.guardar(nueva, inst.config / FICHERO_CORPORACION)
+    try:
+        corporacion.guardar(nueva, inst.config / FICHERO_CORPORACION)
+    except OSError as e:
+        consola.anotar(f"no se pudo guardar la corporación: {e}")
+        consola.decir("\n   No he podido guardar la corporación (¿está el archivo abierto en otro programa?).")
+        consola.decir("   No se ha cambiado nada.")
+        return
     corporacion.usar(nueva)
     consola.anotar(f"corporación guardada: {nueva.model_dump_json()}")
     consola.decir("\n   Guardado. Las actas que crees a partir de ahora usarán esta corporación.")
@@ -1239,6 +1247,11 @@ def flujo_corporacion(inst: Instalacion, pantalla) -> None:
                 return
             else:
                 _EDITORES[opcion](consola, inst, corp)
+    except Exception:
+        consola.anotar(traceback.format_exc())
+        consola.decir("\n   Ha ocurrido un problema con la corporación y no se ha cambiado nada.")
+        consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
+        consola.decir(f"   {consola.ruta_log}")
     finally:
         consola.cerrar()
 
