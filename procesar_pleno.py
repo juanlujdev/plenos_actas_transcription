@@ -35,6 +35,7 @@ from typing import NamedTuple
 import requests
 
 import corporacion
+import corporacion as _corporacion
 from corporacion import Corporacion
 from plenos_acta import letras
 from plenos_informe import (TOPONIMOS, Problema, normalizar_fecha, parsear_intervinientes,
@@ -466,6 +467,13 @@ def fijar_fecha(informe, fecha: str):
     return informe.model_copy(update={"fecha_pleno": fecha})
 
 
+def corporacion_del_pleno(entrada: dict) -> Corporacion:
+    """La corporación con la que se procesó un pleno; los anteriores a guardarla usan la semilla."""
+    if "corporacion" in entrada:
+        return Corporacion.model_validate(entrada["corporacion"])
+    return _corporacion.semilla()
+
+
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    fecha: str, video_url: str | None,
                    transcripcion: str | None = None,
@@ -473,7 +481,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
                    intervinientes: list[dict] | None = None,
                    tipo: str | None = None,
                    voces: dict[str, str] | None = None,
-                   elegir_voces=None) -> ResultadoPleno:
+                   elegir_voces=None,
+                   corporacion: Corporacion | None = None) -> ResultadoPleno:
     """Pipeline completo de un pleno: audio → transcripción → acta → ficheros.
 
     fuente_audio: ruta a un audio local, o None para descargar de video_url.
@@ -484,9 +493,13 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     voces: {etiqueta: persona} confirmadas por la secretaría (se guardan en entrada.json).
     elegir_voces: función(transcripcion) -> dict | None que las pregunta a una persona,
         solo si `voces` es None; devolver {} es «no quiero confirmar ninguna».
+    corporacion: la del Ayuntamiento en la fecha del pleno; None → la configurada (cargar()).
     """
     from plenos_informe import MAX_VUELTAS, _plural, aplicar_voces, bucle_informe
     from plenos_acta import render_acta
+
+    corp = _corporacion.cargar() if corporacion is None else corporacion
+    _corporacion.usar(corp)
 
     if transcripcion is None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -502,7 +515,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     ruta_json = destino / f"{fecha}-informe.json"
     ruta_entrada = destino / "entrada.json"
     entrada = {"video_id": video_id, "fecha": fecha, "titulo": titulo,
-               "video_url": video_url}
+               "video_url": video_url, "corporacion": corp.model_dump()}
     if intervinientes:
         entrada["intervinientes"] = intervinientes
     if tipo:
@@ -667,7 +680,8 @@ def _rehacer_informe(clave: str, convocatoria_pdf: str | None = None,
                           intervinientes=intervinientes or entrada.get("intervinientes"),
                           tipo=entrada.get("tipo"),
                           # Las guardadas no se vuelven a preguntar; si no confirmó ninguna ({}), sí.
-                          voces=entrada.get("voces") or None, elegir_voces=elegir_voces)
+                          voces=entrada.get("voces") or None, elegir_voces=elegir_voces,
+                          corporacion=corporacion_del_pleno(entrada))
 
 
 def _rehacer_acta(clave: str) -> int:
@@ -683,7 +697,9 @@ def _rehacer_acta(clave: str) -> int:
         print(f"No hay informe guardado en {ruta_json}")
         return 1
     informe = InformePleno.model_validate_json(ruta_json.read_text(encoding="utf-8"))
-    informe = fijar_fecha(informe, _cargar_json(carpeta / "entrada.json", {}).get("fecha", fecha))
+    entrada = _cargar_json(carpeta / "entrada.json", {})
+    _corporacion.usar(corporacion_del_pleno(entrada))
+    informe = fijar_fecha(informe, entrada.get("fecha", fecha))
     if informe.tipo_sesion not in ("ordinaria", "extraordinaria"):
         print("El tipo de sesión no consta en el informe: no se puede elegir plantilla.")
         return 1
@@ -701,7 +717,6 @@ def _rehacer_acta(clave: str) -> int:
               f"en Word: ciérralo y vuelve a lanzar --rehacer-acta {fecha}.")
         fallo = f"{type(e).__name__}: {e}"
 
-    entrada = _cargar_json(carpeta / "entrada.json", {})
     ruta_md = carpeta / f"{fecha}-transcripcion.md"
     if ruta_md.exists():
         transcripcion = ruta_md.read_text(encoding="utf-8")

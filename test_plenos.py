@@ -2982,6 +2982,41 @@ os.environ["PLANTILLAS_PROPIAS"] = str(_rota.parent)
 test("sin propia de ese nombre usa la empaquetada", ruta_plantilla("ordinaria"), PLANTILLAS_DIR / "acta_ordinaria.docx")
 del os.environ["PLANTILLAS_PROPIAS"]
 
+from procesar_pleno import corporacion_del_pleno
+test("entrada antigua sin corporación → semilla", corporacion_del_pleno({}), _co.semilla())
+test("entrada con corporación → la suya", corporacion_del_pleno({"corporacion": _otra.model_dump()}), _otra)
+
+_tmp_cp = Path(tempfile.mkdtemp())
+_fecha_cp = "2026-09-07"
+_carpeta_cp = _tmp_cp / "actas" / _fecha_cp
+_carpeta_cp.mkdir(parents=True)
+(_carpeta_cp / f"{_fecha_cp}-informe.json").write_text(
+    InformePleno.model_validate(INFORME_MINIMO).model_dump_json(indent=2), encoding="utf-8")
+(_carpeta_cp / "entrada.json").write_text(
+    json.dumps({"video_id": None, "fecha": _fecha_cp, "titulo": "Pleno de prueba",
+                "video_url": None}), encoding="utf-8")
+_json_otra = _tmp_cp / "otra.json"
+_co.guardar(_otra, _json_otra)
+_bd_cp = _pp.BORRADOR_DIR
+_env_cp = os.environ.get("CORPORACION_JSON")
+_pp.BORRADOR_DIR = _tmp_cp / "actas"
+os.environ["CORPORACION_JSON"] = str(_json_otra)
+try:
+    _co.usar(_co.cargar())
+    with _ctx_reh.redirect_stdout(_io_reh.StringIO()):
+        _pp._rehacer_acta(_fecha_cp)
+    _doc_cp = next(_carpeta_cp.glob("*.docx"))
+    _texto_cp = "\n".join(c.text for t in _Document(str(_doc_cp)).tables for f in t.rows for c in f.cells)
+    test("--rehacer-acta: un pleno antiguo usa la semilla aunque el entorno traiga otra corporación",
+         ("VALERA" in _texto_cp, "JUAN PÉREZ" in _texto_cp), (True, False))
+finally:
+    _pp.BORRADOR_DIR = _bd_cp
+    if _env_cp is None:
+        os.environ.pop("CORPORACION_JSON", None)
+    else:
+        os.environ["CORPORACION_JSON"] = _env_cp
+    _co.usar(_co.semilla())
+
 
 # ── resultado ─────────────────────────────────────────────────────────────────
 print()
