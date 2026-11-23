@@ -34,9 +34,7 @@ from typing import NamedTuple
 
 import requests
 
-import corporacion
-import corporacion as _corporacion
-from corporacion import Corporacion
+from corporacion import Corporacion, cargar, en_uso, nombres_y_apodos, semilla, usar
 from plenos_acta import letras
 from plenos_informe import (TOPONIMOS, Problema, normalizar_fecha, parsear_intervinientes,
                             verificar_respuesta)
@@ -245,7 +243,7 @@ def keyterms_del_pleno(intervinientes: list[dict] | None) -> list[str]:
     (máx. 6 palabras por término)."""
     extra = [t for p in intervinientes or [] for t in (p["nombre"], *p.get("apodos", []))]
     vistos, salida = set(), []
-    for t in [*corporacion.nombres_y_apodos(corporacion.en_uso()), *AAI_VOCABULARIO, *extra]:
+    for t in [*nombres_y_apodos(en_uso()), *AAI_VOCABULARIO, *extra]:
         if 0 < len(t.split()) <= 6 and t.lower() not in vistos:
             vistos.add(t.lower())
             salida.append(t)
@@ -269,7 +267,7 @@ def transcribir_assemblyai(ruta: str, intervinientes: list[dict] | None = None) 
         # fundir a dos en una no, porque el generador propaga la etiqueta a un nombre real.
         # Mínimo 6 = suelo de la corporación; máximo 15 = margen sobre las ~12 voces reales.
         "speaker_options": {"min_speakers_expected": 6, "max_speakers_expected": 15},
-        "prompt": aai_prompt(corporacion.en_uso()),
+        "prompt": aai_prompt(en_uso()),
         "keyterms_prompt": keyterms_del_pleno(intervinientes),
         "custom_spelling": AAI_SPELLING,
     }
@@ -471,7 +469,7 @@ def corporacion_del_pleno(entrada: dict) -> Corporacion:
     """La corporación con la que se procesó un pleno; los anteriores a guardarla usan la semilla."""
     if "corporacion" in entrada:
         return Corporacion.model_validate(entrada["corporacion"])
-    return _corporacion.semilla()
+    return semilla()
 
 
 def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
@@ -498,8 +496,8 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     from plenos_informe import MAX_VUELTAS, _plural, aplicar_voces, bucle_informe
     from plenos_acta import render_acta
 
-    corp = _corporacion.cargar() if corporacion is None else corporacion
-    _corporacion.usar(corp)
+    corp = cargar() if corporacion is None else corporacion
+    usar(corp)
 
     if transcripcion is None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -698,7 +696,7 @@ def _rehacer_acta(clave: str) -> int:
         return 1
     informe = InformePleno.model_validate_json(ruta_json.read_text(encoding="utf-8"))
     entrada = _cargar_json(carpeta / "entrada.json", {})
-    _corporacion.usar(corporacion_del_pleno(entrada))
+    usar(corporacion_del_pleno(entrada))
     informe = fijar_fecha(informe, entrada.get("fecha", fecha))
     if informe.tipo_sesion not in ("ordinaria", "extraordinaria"):
         print("El tipo de sesión no consta en el informe: no se puede elegir plantilla.")

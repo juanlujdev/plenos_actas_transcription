@@ -100,13 +100,23 @@ def cargar() -> Corporacion:
     return semilla()
 
 
+def ruta_en_historial(historial: Path, fichero: Path) -> Path:
+    sello = f"{datetime.now():%Y-%m-%d-%H%M%S}"
+    destino = historial / f"{fichero.stem}-{sello}{fichero.suffix}"
+    n = 1
+    while destino.exists():
+        n += 1
+        destino = historial / f"{fichero.stem}-{sello}-{n}{fichero.suffix}"
+    return destino
+
+
 def guardar(corp: Corporacion, ruta: Path) -> None:
     ruta = Path(ruta)
     ruta.parent.mkdir(parents=True, exist_ok=True)
     if ruta.exists():
         historial = ruta.parent / "historial"
         historial.mkdir(exist_ok=True)
-        shutil.copy2(ruta, historial / f"corporacion-{datetime.now():%Y-%m-%d-%H%M%S}.json")
+        shutil.copy2(ruta, ruta_en_historial(historial, ruta.with_name("corporacion.json")))
     ruta.write_text(json.dumps(corp.model_dump(), indent=2, ensure_ascii=False), encoding="utf-8")
 
 

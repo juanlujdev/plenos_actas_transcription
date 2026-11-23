@@ -58,6 +58,7 @@ def fecha_larga(iso: str) -> str:
 import os
 import re
 import tempfile
+import zipfile
 from pathlib import Path
 
 import corporacion
@@ -301,12 +302,16 @@ def _poner_parrafos(celda, bloques: list) -> None:
         _escribir_bloque(celda.add_paragraph(style=modelo.style), bloque)
 
 
+class PlantillaIncompleta(ValueError):
+    pass
+
+
 def _parrafo_con_texto(doc, texto: str):
     """Localiza un párrafo por su contenido (más robusto que el índice)."""
     for parrafo in doc.paragraphs:
         if parrafo.text.strip() == texto:
             return parrafo
-    raise ValueError(f"la plantilla no contiene el párrafo {texto!r}")
+    raise PlantillaIncompleta(f"La plantilla no contiene el párrafo «{texto}».")
 
 
 # ── render ────────────────────────────────────────────────────────────────────
@@ -407,11 +412,17 @@ def _informe_de_prueba(tipo: str) -> InformePleno:
 
 def validar_plantilla(ruta: Path, tipo: str) -> str | None:
     """None si la plantilla sirve; si no, el motivo en lenguaje llano."""
+    from docx.opc.exceptions import PackageNotFoundError
+
     try:
         with tempfile.TemporaryDirectory() as tmp:
             render_acta(_informe_de_prueba(tipo), str(Path(tmp) / "prueba.docx"), plantilla=ruta)
+    except (PackageNotFoundError, zipfile.BadZipFile):
+        return "El archivo no es un documento de Word (.docx) válido."
     except IndexError:
-        return "a la plantilla le faltan tablas del modelo original"
-    except Exception as e:
-        return str(e) or "el fichero no es una plantilla de Word válida"
+        return "A la plantilla le faltan tablas del modelo original."
+    except PlantillaIncompleta as e:
+        return str(e)
+    except Exception:
+        return "La plantilla no tiene la forma del modelo original y no se puede usar."
     return None

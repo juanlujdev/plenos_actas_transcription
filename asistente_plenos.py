@@ -7,6 +7,7 @@ Se ejecuta empaquetado con PyInstaller (PC del Ayuntamiento) o con python (desar
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -35,7 +36,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from procesar_pleno import (ErrorDeDescarga, clave_pleno, dir_borrador, extraer_fecha,
                             extraer_video_id, leer_convocatoria, procesar_pleno,
                             _rehacer_acta, _rehacer_informe, _titulo_de_youtube)
+from pydantic import ValidationError
+
 import corporacion
+from corporacion import Corporacion, ErrorCorporacion, Persona, Presidencia, Secretaria
+from plenos_acta import PLANTILLAS, validar_plantilla
 from plenos_informe import VOZ_MEZCLADA, VOZ_PUBLICO, muestras_por_etiqueta, normalizar_fecha
 # El aviso "COMPROBAR ANTES DE SELLAR.txt" vive en plenos_guia.py porque
 # procesar_pleno también lo escribe en --rehacer-acta, sin pasar por aquí.
@@ -44,6 +49,7 @@ from plenos_guia import (_avisos_legibles, _lineas_aviso, enlace_video, escribir
 
 DIR_CONFIG = "Configuración (no tocar)"
 DIR_ACTAS = "Actas generadas"
+FICHERO_CORPORACION = "corporacion.json"
 CLAVES_NECESARIAS = ("ASSEMBLYAI_API_KEY", "OPENROUTER_API_KEY")
 RESPONSABLE = "Juan Luján"
 
@@ -81,6 +87,12 @@ def preparar_instalacion() -> Instalacion:
     config = base / DIR_CONFIG
     config.mkdir(parents=True, exist_ok=True)
     cargar_configuracion(config)
+
+    ruta_corporacion = config / FICHERO_CORPORACION
+    if not ruta_corporacion.exists():
+        corporacion.guardar(corporacion.semilla(), ruta_corporacion)
+    os.environ["CORPORACION_JSON"] = str(ruta_corporacion)
+    os.environ["PLANTILLAS_PROPIAS"] = str(config / "plantillas")
 
     if os.environ.get("ACTAS_DIR"):
         actas = Path(os.environ["ACTAS_DIR"])
@@ -732,6 +744,426 @@ def flujo_rehacer(inst: Instalacion, pantalla) -> None:
         rehacer_pleno(inst, pantalla, plenos[elegido - 1][0])
 
 
+# ── corporación y plantillas ──────────────────────────────────────────────────
+
+def revalidar(corp: Corporacion, **cambios) -> Corporacion:
+    return Corporacion.model_validate({**corp.model_dump(), **cambios})
+
+
+def _con_alcalde(miembros: list[Persona], nombre: str, cargo_del_anterior: dict | None = None) -> list[Persona]:
+    anterior = cargo_del_anterior or {"cargo": "concejal", "orden_teniente": None}
+    return [p.model_copy(update={"cargo": "alcalde", "orden_teniente": None}) if p.nombre == nombre
+            else p.model_copy(update=anterior) if p.cargo == "alcalde"
+            else p
+            for p in miembros]
+
+
+def sin_persona(corp: Corporacion, nombre: str, nuevo_alcalde: str | None = None,
+                presidencia: Presidencia | None = None) -> Corporacion:
+    """Quien pasa a ser Alcalde preside como titular, salvo que se indique otra presidencia."""
+    miembros = [p for p in corp.miembros if p.nombre != nombre]
+    if nuevo_alcalde:
+        miembros = _con_alcalde(miembros, nuevo_alcalde)
+        presidencia = presidencia or Presidencia(persona=nuevo_alcalde, motivo="titular")
+    return revalidar(corp, miembros=miembros, presidencia=presidencia or corp.presidencia)
+
+
+def con_persona(corp: Corporacion, persona: Persona, en_lugar_de: str | None = None,
+                cargo_del_anterior_alcalde: dict | None = None) -> Corporacion:
+    """Alta (en_lugar_de=None) o cambio de datos. Si la persona pasa a ser Alcalde, el
+    anterior toma `cargo_del_anterior_alcalde` y la nueva preside como titular."""
+    if en_lugar_de is None:
+        miembros = [*corp.miembros, persona]
+    else:
+        miembros = [persona if p.nombre == en_lugar_de else p for p in corp.miembros]
+    presidencia = corp.presidencia
+    if presidencia.persona == en_lugar_de:
+        presidencia = Presidencia(persona=persona.nombre, motivo=presidencia.motivo)
+    if persona.cargo == "alcalde" and corp.alcalde().nombre != en_lugar_de:
+        miembros = _con_alcalde(miembros, persona.nombre, cargo_del_anterior_alcalde)
+        presidencia = Presidencia(persona=persona.nombre, motivo="titular")
+    return revalidar(corp, miembros=miembros, presidencia=presidencia)
+
+
+def _a_historial(fichero: Path, config: Path) -> None:
+    if fichero.exists():
+        historial = config / "historial"
+        historial.mkdir(parents=True, exist_ok=True)
+        shutil.move(fichero, corporacion.ruta_en_historial(historial, fichero))
+
+
+def instalar_plantilla(origen: Path, tipo: str, config: Path) -> None:
+    datos = Path(origen).read_bytes()
+    propia = config / "plantillas" / PLANTILLAS[tipo]
+    _a_historial(propia, config)
+    propia.parent.mkdir(parents=True, exist_ok=True)
+    propia.write_bytes(datos)
+
+
+def volver_a_la_original(tipo: str, config: Path) -> None:
+    _a_historial(config / "plantillas" / PLANTILLAS[tipo], config)
+
+
+def _texto(consola: Consola, pregunta: str, actual: str | None = None, obligatorio: bool = False) -> str:
+    """actual=None es un alta: Enter deja el campo vacío. Al cambiar, Enter lo conserva."""
+    while True:
+        consola.decir(f"\n   {pregunta}")
+        if actual:
+            consola.decir(f"   Ahora: {actual}")
+            consola.decir("   Pulsa Enter para dejarlo como está" +
+                          ("." if obligatorio else ", o escribe un guion (-) para borrarlo."))
+        elif not obligatorio:
+            consola.decir("   Si no hace falta, pulsa Enter sin escribir nada.")
+        escrito = input("\n>  ").strip()
+        if escrito == "-" and not obligatorio:
+            return ""
+        if escrito or actual:
+            return escrito or actual
+        if not obligatorio:
+            return ""
+        consola.decir("\n   Esto no puede quedar vacío.")
+
+
+def _preguntar_apodos(consola: Consola, actuales: list[str] | None) -> list[str]:
+    texto = _texto(consola, "¿Cómo llaman a esta persona en el pleno, si no es por su nombre completo?\n"
+                            "   Escribe los nombres separados por comas (por ejemplo: Chari, Rosario).",
+                   ", ".join(actuales) if actuales is not None else None)
+    return [a.strip() for a in texto.split(",") if a.strip()]
+
+
+def _preguntar_sexo(consola: Consola) -> str:
+    consola.decir("\n   ¿Es hombre o mujer?")
+    return "hombre" if preguntar_opcion(consola, ["Hombre", "Mujer"]) == 1 else "mujer"
+
+
+def _preguntar_cargo(consola: Consola, sexo: str, otros, puede_ser_alcalde: bool = True,
+                     pregunta: str = "¿Qué cargo tiene?") -> dict:
+    cargos = ([("alcalde", "Alcalde o Alcaldesa")] if puede_ser_alcalde else []) + [
+        ("teniente", "Teniente de Alcalde"), ("concejal", "Concejal o Concejala")]
+    consola.decir(f"\n   {pregunta}")
+    cargo = cargos[preguntar_opcion(consola, [texto for _, texto in cargos]) - 1][0]
+    if cargo != "teniente":
+        return {"cargo": cargo, "orden_teniente": None}
+    ocupados = {p.orden_teniente for p in otros if p.cargo == "teniente"}
+    libres = [n for n in range(1, 10) if n not in ocupados][:5]
+    etiquetas = [corporacion.cargo_en_texto(Persona(nombre="-", sexo=sexo, cargo="teniente", orden_teniente=n,
+                                                    partido="-", grupo="gobierno")) for n in libres]
+    consola.decir("\n   ¿Qué Teniente de Alcalde es?")
+    elegido = preguntar_opcion(consola, [e[0].upper() + e[1:] for e in etiquetas])
+    return {"cargo": "teniente", "orden_teniente": libres[elegido - 1]}
+
+
+CAMPOS_PERSONA = [
+    "El nombre",
+    "Si es hombre o mujer",
+    "El cargo",
+    "Si está en el gobierno o en la oposición",
+    "El partido",
+    "Cómo le llaman en el pleno",
+    "Una observación (por ejemplo, «es además presidenta de la Asociación de Jubilados»)",
+    "Su situación (por ejemplo, «de baja médica»)",
+]
+
+
+def _preguntar_campo(consola: Consola, campo: int, actual: Persona | None, datos: dict,
+                     otros, puede_ser_alcalde: bool) -> dict:
+    if campo == 1:
+        return {"nombre": _texto(consola, "Nombre y apellidos completos, sin «D.» ni «Dª»:",
+                                 actual.nombre if actual else None, obligatorio=True)}
+    if campo == 2:
+        return {"sexo": _preguntar_sexo(consola)}
+    if campo == 3:
+        return _preguntar_cargo(consola, datos["sexo"], otros, puede_ser_alcalde)
+    if campo == 4:
+        consola.decir("\n   ¿Está en el equipo de gobierno o en la oposición?")
+        return {"grupo": "gobierno" if preguntar_opcion(consola, ["Equipo de gobierno", "Oposición"]) == 1
+                else "oposicion"}
+    if campo == 5:
+        return {"partido": _texto(consola, "¿De qué partido o agrupación es? (por ejemplo: PSOE, PP)",
+                                  actual.partido if actual else None, obligatorio=True)}
+    if campo == 6:
+        return {"apodos": _preguntar_apodos(consola, actual.apodos if actual else None)}
+    if campo == 7:
+        return {"observacion": _texto(consola, "¿Hay algo que el programa deba saber de esta persona?\n"
+                                               "   (por ejemplo: «es además presidenta de la Asociación de Jubilados»)",
+                                      actual.observacion if actual else None)}
+    return {"situacion": _texto(consola, "¿Está en alguna situación especial? (por ejemplo: «de baja médica»)",
+                                actual.situacion if actual else None)}
+
+
+def preguntar_persona(consola: Consola, actual: Persona | None = None, campos=None, otros=(),
+                      puede_ser_alcalde: bool = True) -> Persona:
+    datos = actual.model_dump() if actual else {}
+    for campo in campos or range(1, len(CAMPOS_PERSONA) + 1):
+        datos.update(_preguntar_campo(consola, campo, actual, datos, otros, puede_ser_alcalde))
+    return Persona.model_validate(datos)
+
+
+def preguntar_secretaria(consola: Consola, actual: Secretaria) -> Secretaria:
+    nombre = _texto(consola, "Nombre y apellidos de la Secretaria o el Secretario, sin «D.» ni «Dª»:",
+                    actual.nombre, obligatorio=True)
+    if nombre == actual.nombre:
+        return Secretaria(nombre=nombre, sexo=actual.sexo, apodos=_preguntar_apodos(consola, actual.apodos))
+    return Secretaria(nombre=nombre, sexo=_preguntar_sexo(consola), apodos=_preguntar_apodos(consola, None))
+
+
+def preguntar_presidencia(consola: Consola, miembros: list[Persona]) -> Presidencia:
+    candidatos = sorted((p for p in miembros if p.cargo in ("alcalde", "teniente")),
+                        key=lambda p: p.orden_teniente or 0)
+    consola.decir("\n   ¿Quién preside los plenos?")
+    consola.decir("   Solo puede ser el Alcalde o la Alcaldesa, o un Teniente de Alcalde.")
+    elegido = candidatos[preguntar_opcion(
+        consola, [f"{p.nombre}  ({corporacion.cargo_en_texto(p)})" for p in candidatos]) - 1]
+    if elegido.cargo == "alcalde":
+        return Presidencia(persona=elegido.nombre, motivo="titular")
+    consola.decir(f"\n   ¿En virtud de qué preside {elegido.nombre}?")
+    motivo = preguntar_opcion(consola, ["Por delegación de funciones del Alcalde o la Alcaldesa",
+                                        "En sustitución del Alcalde o la Alcaldesa, por ausencia"])
+    return Presidencia(persona=elegido.nombre, motivo="delegacion" if motivo == 1 else "ausencia")
+
+
+def _explicar(consola: Consola, e: ValidationError) -> None:
+    consola.decir("\n   Así no se puede guardar:")
+    for motivo in corporacion.errores_legibles(e):
+        consola.decir(f"      · {motivo}")
+    consola.decir("   No se ha guardado nada.")
+
+
+def _intentar(consola: Consola, construir) -> Corporacion | None:
+    try:
+        return construir()
+    except ValidationError as e:
+        _explicar(consola, e)
+        return None
+
+
+def _mostrar(consola: Consola, corp: Corporacion) -> None:
+    for linea in corporacion.resumen(corp):
+        consola.decir(f"      {linea}")
+
+
+def _confirmar_y_guardar(consola: Consola, inst: Instalacion, nueva: Corporacion | None) -> None:
+    if nueva is None:
+        return
+    consola.decir("\n   Así quedaría la corporación:\n")
+    _mostrar(consola, nueva)
+    if not input("\n   ¿Guardar?  (s/n)  ").strip().lower().startswith("s"):
+        consola.decir("\n   No se ha guardado nada.")
+        return
+    corporacion.guardar(nueva, inst.config / FICHERO_CORPORACION)
+    corporacion.usar(nueva)
+    consola.anotar(f"corporación guardada: {nueva.model_dump_json()}")
+    consola.decir("\n   Guardado. Las actas que crees a partir de ahora usarán esta corporación.")
+
+
+def _elegir_persona(consola: Consola, corp: Corporacion, pregunta: str) -> Persona | None:
+    consola.decir(f"\n   {pregunta}")
+    eleccion = preguntar_opcion(consola, [p.nombre for p in corp.miembros] + ["Volver"])
+    return corp.miembros[eleccion - 1] if eleccion <= len(corp.miembros) else None
+
+
+def _cargo_del_anterior_alcalde(consola: Consola, corp: Corporacion, persona: Persona,
+                                en_lugar_de: str | None) -> dict | None:
+    alcalde = corp.alcalde()
+    if persona.cargo != "alcalde" or alcalde.nombre == en_lugar_de:
+        return None
+    consola.decir(f"\n   {persona.nombre} pasa a ser {corporacion.cargo_en_texto(persona)} y presidirá")
+    consola.decir("   los plenos como titular (si no es así, cámbialo luego en «Cambiar")
+    consola.decir("   quién preside»).")
+    otros = [p for p in corp.miembros if p.nombre not in (alcalde.nombre, en_lugar_de)] + [persona]
+    return _preguntar_cargo(consola, alcalde.sexo, otros, puede_ser_alcalde=False,
+                            pregunta=f"¿Qué cargo tiene ahora {alcalde.nombre}?")
+
+
+def _alta(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    consola.decir("\n   Vamos a dar de alta a una persona. Te pregunto sus datos uno a uno.")
+    persona = preguntar_persona(consola, otros=corp.miembros)
+    anterior = _cargo_del_anterior_alcalde(consola, corp, persona, None)
+    _confirmar_y_guardar(consola, inst, _intentar(
+        consola, lambda: con_persona(corp, persona, cargo_del_anterior_alcalde=anterior)))
+
+
+def _cambiar_datos(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    actual = _elegir_persona(consola, corp, "¿De quién quieres cambiar los datos?")
+    if actual is None:
+        return
+    consola.decir(f"\n   ¿Qué quieres cambiar de {actual.nombre}?")
+    campo = preguntar_opcion(consola, CAMPOS_PERSONA + ["Volver"])
+    if campo > len(CAMPOS_PERSONA):
+        return
+    persona = preguntar_persona(consola, actual, campos=[campo],
+                                otros=[p for p in corp.miembros if p is not actual])
+    anterior = _cargo_del_anterior_alcalde(consola, corp, persona, actual.nombre)
+    _confirmar_y_guardar(consola, inst, _intentar(
+        consola, lambda: con_persona(corp, persona, actual.nombre, anterior)))
+
+
+def _baja(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    persona = _elegir_persona(consola, corp, "¿A quién quieres dar de baja?")
+    if persona is None:
+        return
+    try:
+        nueva = sin_persona(corp, persona.nombre)
+    except ValidationError as e:
+        if persona.cargo != "alcalde" and persona.nombre != corp.presidencia.persona:
+            _explicar(consola, e)
+            return
+        for motivo in corporacion.errores_legibles(e):
+            consola.decir(f"\n   {motivo}")
+        resto = [p for p in corp.miembros if p is not persona]
+        nuevo_alcalde = presidencia = None
+        if persona.cargo == "alcalde":
+            consola.decir(f"   {persona.nombre} es {corporacion.cargo_en_texto(persona)}. ¿Quién pasa a serlo?")
+            nuevo_alcalde = resto[preguntar_opcion(consola, [p.nombre for p in resto]) - 1].nombre
+            consola.decir(f"\n   {nuevo_alcalde} presidirá los plenos como titular (si no es así,")
+            consola.decir("   cámbialo luego en «Cambiar quién preside»).")
+        else:
+            consola.decir(f"   {persona.nombre} preside los plenos: hay que elegir quién los preside ahora.")
+            presidencia = preguntar_presidencia(consola, resto)
+        nueva = _intentar(consola, lambda: sin_persona(corp, persona.nombre, nuevo_alcalde, presidencia))
+    _confirmar_y_guardar(consola, inst, nueva)
+
+
+def _nueva_corporacion(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    consola.decir("\n   Vamos a escribir la corporación entera, persona a persona: los")
+    consola.decir("   concejales y concejalas, el Alcalde o la Alcaldesa y los Tenientes de")
+    consola.decir("   Alcalde. No se guarda nada hasta el final, y antes te enseño cómo queda.")
+    miembros: list[Persona] = []
+    while True:
+        consola.decir(f"\n   ── Persona {len(miembros) + 1} ──")
+        hay_alcalde = any(p.cargo == "alcalde" for p in miembros)
+        miembros.append(preguntar_persona(consola, otros=miembros, puede_ser_alcalde=not hay_alcalde))
+        consola.decir(f"\n   Llevas {len(miembros)}: {', '.join(p.nombre for p in miembros)}.")
+        if preguntar_opcion(consola, ["Dar de alta a otra persona", "Ya están todos"]) == 1:
+            continue
+        if any(p.cargo == "alcalde" for p in miembros):
+            break
+        consola.decir("\n   Todavía falta el Alcalde o la Alcaldesa: dalo de alta ahora.")
+    consola.decir("\n   Ahora, la Secretaria o el Secretario.")
+    secretaria = preguntar_secretaria(consola, corp.secretaria)
+    presidencia = preguntar_presidencia(consola, miembros)
+    _confirmar_y_guardar(consola, inst, _intentar(
+        consola, lambda: Corporacion(miembros=miembros, secretaria=secretaria, presidencia=presidencia)))
+
+
+def _cambiar_presidencia(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    presidencia = preguntar_presidencia(consola, corp.miembros)
+    _confirmar_y_guardar(consola, inst, _intentar(consola, lambda: revalidar(corp, presidencia=presidencia)))
+
+
+def _cambiar_secretaria(consola: Consola, inst: Instalacion, corp: Corporacion) -> None:
+    secretaria = preguntar_secretaria(consola, corp.secretaria)
+    _confirmar_y_guardar(consola, inst, _intentar(consola, lambda: revalidar(corp, secretaria=secretaria)))
+
+
+def _sustituir_plantilla(consola: Consola, inst: Instalacion, tipo: str, habia_propia: bool) -> None:
+    consola.decir("\n   Arrastra hasta esta ventana el documento de Word (.docx) con la")
+    consola.decir("   nueva plantilla y pulsa Enter.")
+    consola.decir("   Si no quieres cambiarla, pulsa Enter sin escribir nada.")
+    ruta = limpiar_ruta(input("\n>  "))
+    if not ruta:
+        return
+    if not Path(ruta).is_file():
+        consola.decir("\n   No encuentro ese archivo. Se sigue usando la plantilla de antes.")
+        return
+    consola.decir("\n   Compruebo que la plantilla sirve...")
+    motivo = validar_plantilla(Path(ruta), tipo)
+    if motivo:
+        consola.anotar(f"plantilla rechazada: {ruta} · {motivo}")
+        consola.decir("\n   Esa plantilla no me vale:")
+        consola.decir(f"      {motivo}")
+        consola.decir("   Se sigue usando la de antes.")
+        return
+    if not input("\n   La plantilla sirve. ¿Guardar?  (s/n)  ").strip().lower().startswith("s"):
+        consola.decir("\n   No se ha guardado nada.")
+        return
+    instalar_plantilla(Path(ruta), tipo, inst.config)
+    consola.anotar(f"plantilla {tipo} sustituida por {ruta}")
+    consola.decir("\n   Guardada. Las actas que crees a partir de ahora usarán esta plantilla.")
+    if habia_propia:
+        consola.decir(f"   La anterior queda guardada en «{DIR_CONFIG} > historial».")
+
+
+def _cambiar_plantilla(consola: Consola, inst: Instalacion) -> None:
+    consola.decir("\n   ¿Qué plantilla del acta quieres cambiar?")
+    eleccion = preguntar_opcion(consola, ["La del pleno ordinario", "La del pleno extraordinario", "Volver"])
+    if eleccion == 3:
+        return
+    tipo = "ordinaria" if eleccion == 1 else "extraordinaria"
+    propia = (inst.config / "plantillas" / PLANTILLAS[tipo]).exists()
+    consola.decir("\n   Ahora se usa " + ("una plantilla que pusiste tú." if propia
+                                          else "la plantilla original del programa."))
+    opciones = ["Sustituirla por otra"] + (["Volver a la plantilla original"] if propia else []) + ["Volver"]
+    accion = opciones[preguntar_opcion(consola, opciones) - 1]
+    try:
+        if accion == "Sustituirla por otra":
+            _sustituir_plantilla(consola, inst, tipo, propia)
+        elif accion == "Volver a la plantilla original":
+            volver_a_la_original(tipo, inst.config)
+            consola.anotar(f"plantilla {tipo}: vuelta a la original")
+            consola.decir("\n   Hecho: se vuelve a usar la plantilla original. La que tenías")
+            consola.decir(f"   queda guardada en «{DIR_CONFIG} > historial».")
+    except OSError as e:
+        consola.anotar(f"no se pudo cambiar la plantilla {tipo}: {e}")
+        consola.decir("\n   No he podido copiar la plantilla. Si la tienes abierta en Word,")
+        consola.decir("   ciérrala y vuelve a intentarlo.")
+
+
+def _corporacion_para_editar(consola: Consola) -> Corporacion:
+    try:
+        return corporacion.cargar()
+    except ErrorCorporacion as e:
+        consola.anotar(str(e))
+        consola.decir("\n   El archivo de la corporación está dañado. Parto de la corporación")
+        consola.decir("   inicial del programa: revisa los datos antes de guardar.")
+        return corporacion.semilla()
+
+
+OPCIONES_CORPORACION = [
+    "Ver la corporación actual",
+    "Dar de alta a una persona",
+    "Cambiar los datos de una persona",
+    "Dar de baja a una persona",
+    "Nueva corporación tras unas elecciones",
+    "Cambiar quién preside y en virtud de qué",
+    "Cambiar la Secretaria o el Secretario",
+    "Cambiar una plantilla del acta",
+    "Volver al menú principal",
+]
+
+_EDITORES = {2: _alta, 3: _cambiar_datos, 4: _baja, 5: _nueva_corporacion,
+             6: _cambiar_presidencia, 7: _cambiar_secretaria}
+
+
+def flujo_corporacion(inst: Instalacion, pantalla) -> None:
+    consola = Consola(nuevo_log(inst.registros), pantalla)
+    try:
+        while True:
+            corp = _corporacion_para_editar(consola)
+            consola.decir("\n   ── La corporación y las plantillas del acta ──")
+            opcion = preguntar_opcion(consola, OPCIONES_CORPORACION)
+            if opcion == 1:
+                consola.decir("\n   La corporación actual:\n")
+                _mostrar(consola, corp)
+            elif opcion == 8:
+                _cambiar_plantilla(consola, inst)
+            elif opcion == 9:
+                return
+            else:
+                _EDITORES[opcion](consola, inst, corp)
+    finally:
+        consola.cerrar()
+
+
+def averia_corporacion() -> str | None:
+    """Carga la corporación configurada; si está dañada, devuelve el motivo."""
+    try:
+        corporacion.usar(corporacion.cargar())
+    except ErrorCorporacion as e:
+        return str(e)
+    return None
+
+
 # ── menú ──────────────────────────────────────────────────────────────────────
 
 def mostrar_instrucciones(inst: Instalacion, consola: Consola) -> None:
@@ -760,24 +1192,38 @@ def main() -> int:
 
     while True:
         consola = Consola(nuevo_log(inst.registros), pantalla)
+        averia = averia_corporacion()
         consola.decir("\n" + "  " + "═" * 56)
         consola.decir("    ACTAS DE PLENOS · AYUNTAMIENTO DE ENGUÍDANOS")
         consola.decir("  " + "═" * 56)
+        if averia:
+            consola.decir(f"\n   {averia}")
+            consola.decir("   Arréglalo con la opción 3, «Cambiar la corporación o las plantillas»,")
+            consola.decir(f"   o avisa a {RESPONSABLE}.")
         opcion = preguntar_opcion(consola, [
             "Crear el acta de un pleno nuevo",
             "Volver a generar el documento de un pleno ya hecho",
+            "Cambiar la corporación o las plantillas",
             "Ver las instrucciones",
             "Salir",
         ])
-        if opcion == 3:
+        bloqueada = averia and opcion in (1, 2)
+        if bloqueada:
+            consola.decir("\n   Antes hay que arreglar la corporación: usa la opción 3")
+            consola.decir(f"   o avisa a {RESPONSABLE}.")
+        if opcion == 4:
             mostrar_instrucciones(inst, consola)
         consola.cerrar()
 
-        if opcion == 1:
+        if bloqueada:
+            pass
+        elif opcion == 1:
             flujo_pleno_nuevo(inst, pantalla)
         elif opcion == 2:
             flujo_rehacer(inst, pantalla)
-        elif opcion == 4:
+        elif opcion == 3:
+            flujo_corporacion(inst, pantalla)
+        elif opcion == 5:
             return 0
         input("\n   Pulsa Enter para volver al menú.  ")
 

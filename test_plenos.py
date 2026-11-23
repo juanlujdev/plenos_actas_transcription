@@ -2829,6 +2829,9 @@ _co.guardar(_s, _dir / "corporacion.json")
 _co.guardar(_s, _dir / "corporacion.json")
 test("guardar: la segunda vez deja copia en historial",
      len(list((_dir / "historial").glob("corporacion-*.json"))), 1)
+_co.guardar(_s, _dir / "corporacion.json")
+test("guardar dos veces en el mismo segundo no pisa la copia anterior",
+     len(list((_dir / "historial").glob("corporacion-*.json"))), 2)
 os.environ["CORPORACION_JSON"] = str(_dir / "corporacion.json")
 test("cargar: lee la vigente", _co.cargar(), _s)
 (_dir / "corporacion.json").write_text("{roto", encoding="utf-8")
@@ -2977,7 +2980,8 @@ _d.save(str(_rota))
 test("plantilla sin el hueco se rechaza con motivo", "___________" in (validar_plantilla(_rota, "ordinaria") or ""), True)
 _falso = _rota.parent / "falso.docx"
 _falso.write_text("esto no es un Word", encoding="utf-8")
-test("un fichero que no es Word se rechaza con motivo", bool(validar_plantilla(_falso, "ordinaria")), True)
+test("un fichero que no es Word se rechaza en español",
+     validar_plantilla(_falso, "ordinaria"), "El archivo no es un documento de Word (.docx) válido.")
 os.environ["PLANTILLAS_PROPIAS"] = str(_rota.parent)
 test("sin propia de ese nombre usa la empaquetada", ruta_plantilla("ordinaria"), PLANTILLAS_DIR / "acta_ordinaria.docx")
 del os.environ["PLANTILLAS_PROPIAS"]
@@ -3016,6 +3020,37 @@ finally:
     else:
         os.environ["CORPORACION_JSON"] = _env_cp
     _co.usar(_co.semilla())
+
+from asistente_plenos import sin_persona
+_tras_baja = sin_persona(_co.semilla(), "Mario Cerdán Ochoa")
+test("baja: quita a la persona", "Mario Cerdán Ochoa" in [p.nombre for p in _tras_baja.miembros], False)
+try:
+    sin_persona(_co.semilla(), "Sergio de Fez Cerezuela"); _err = []
+except Exception as e:
+    _err = _co.errores_legibles(e)
+test("baja del alcalde: error legible", any("Alcalde o Alcaldesa" in m for m in _err), True)
+_relevo = sin_persona(_co.semilla(), "Sergio de Fez Cerezuela", nuevo_alcalde="Lorena Luján Chujfi")
+test("baja del alcalde con relevo: la nueva es alcaldesa y preside como titular",
+     (_relevo.alcalde().nombre, _relevo.presidencia.motivo), ("Lorena Luján Chujfi", "titular"))
+
+from asistente_plenos import con_persona, instalar_plantilla, volver_a_la_original
+_mocion = con_persona(_co.semilla(), _co.semilla().miembros[6].model_copy(update={"cargo": "alcalde"}),
+                      en_lugar_de="Fernando Pons Mayor")
+test("cambio de alcalde: el anterior pasa a concejal y preside el nuevo",
+     (_mocion.alcalde().nombre, _mocion.miembros[0].cargo, _mocion.quien_preside().nombre),
+     ("Fernando Pons Mayor", "concejal", "Fernando Pons Mayor"))
+_renombrada = con_persona(_co.semilla(), _co.semilla().miembros[1].model_copy(update={"nombre": "Lorena Luján"}),
+                          en_lugar_de="Lorena Luján Chujfi")
+test("renombrar a quien preside mantiene la presidencia", _renombrada.presidencia.persona, "Lorena Luján")
+
+_cfg = _Path(_tf.mkdtemp())
+instalar_plantilla(PLANTILLAS_DIR / "acta_ordinaria.docx", "ordinaria", _cfg)
+instalar_plantilla(PLANTILLAS_DIR / "acta_ordinaria.docx", "ordinaria", _cfg)
+test("plantilla propia instalada y la anterior al historial",
+     ((_cfg / "plantillas" / "acta_ordinaria.docx").exists(), len(list((_cfg / "historial").iterdir()))), (True, 1))
+volver_a_la_original("ordinaria", _cfg)
+test("volver a la original: la propia pasa al historial",
+     ((_cfg / "plantillas" / "acta_ordinaria.docx").exists(), len(list((_cfg / "historial").iterdir()))), (False, 2))
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────

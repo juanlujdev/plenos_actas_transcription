@@ -212,7 +212,40 @@ desde cero: tarda unos 5 minutos, porque no vuelve a descargar
 ni a transcribir nada, solo redacta el documento otra vez.
 
 
-8. SI ALGO FALLA
+8. CAMBIAR LA CORPORACIÓN O LAS PLANTILLAS
+───────────────────────────────────────────────────────────
+
+Elige la opción "3" del menú cuando cambie alguien de la
+corporación (un alta, una baja, una moción, unas elecciones),
+quién preside los plenos, la Secretaria, o cuando quieras usar
+una plantilla del acta con otro texto o membrete. Desde ahí
+puedes:
+
+  · ver la corporación tal como la usa el programa;
+  · dar de alta, cambiar los datos o dar de baja a una persona;
+  · escribir la corporación entera tras unas elecciones;
+  · cambiar quién preside y en virtud de qué (como titular, por
+    delegación o por ausencia del Alcalde o la Alcaldesa);
+  · cambiar la Secretaria o el Secretario;
+  · cambiar la plantilla del acta ordinaria o la extraordinaria.
+
+Antes de guardar, el programa te enseña cómo queda y te pregunta
+si quieres guardarlo: escribe "s" para guardar o "n" para dejarlo
+como estaba. Si algo no cuadra (por ejemplo, que no quede ningún
+Alcalde o Alcaldesa), te dice qué es y no guarda nada.
+
+Para cambiar una plantilla, arrastra el documento de Word (.docx)
+hasta la ventana y pulsa Enter. El programa comprueba que sirve
+antes de aceptarlo; si no sirve, te dice por qué y sigue usando
+la de antes. También puedes volver a la plantilla original.
+
+Lo que cambies vale para las actas que crees a partir de ese
+momento. Las actas de plenos anteriores se siguen haciendo con
+la corporación que había entonces. Cada versión anterior queda
+guardada en "Configuración (no tocar) > historial".
+
+
+9. SI ALGO FALLA
 ───────────────────────────────────────────────────────────
 
 Si en algún momento aparece un mensaje diciendo que ha ocurrido
