@@ -34,6 +34,7 @@ from typing import NamedTuple
 
 import requests
 
+import costes
 from corporacion import Corporacion, cargar, en_uso, nombres_y_apodos, semilla, usar
 from plenos_acta import letras
 from plenos_informe import (TOPONIMOS, Problema, normalizar_fecha, parsear_intervinientes,
@@ -294,6 +295,7 @@ def transcribir_assemblyai(ruta: str, intervinientes: list[dict] | None = None) 
             continue
         fallos_seguidos = 0
         if estado["status"] == "completed":
+            costes.anotar("assemblyai", (estado.get("audio_duration") or 0) / 3600 * costes.AAI_PRECIO_HORA)
             return formatear_utterances(estado["utterances"])
         if estado["status"] == "error":
             raise RuntimeError(f"AssemblyAI: {estado.get('error')}")
@@ -455,6 +457,7 @@ class ResultadoPleno(NamedTuple):
     ruta_guia: Path | None = None
     objeciones: tuple = ()
     fallo_acta: str = ""
+    coste: dict = {}
 
 
 def fijar_fecha(informe, fecha: str):
@@ -496,6 +499,7 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     from plenos_informe import MAX_VUELTAS, _plural, aplicar_voces, bucle_informe
     from plenos_acta import render_acta
 
+    costes.reiniciar()
     corp = cargar() if corporacion is None else corporacion
     usar(corp)
 
@@ -603,8 +607,9 @@ def procesar_pleno(fuente_audio: str | None, video_id: str | None, titulo: str,
     else:
         _banner("SUCCESS", "acta generada y sin objeciones del auditor.")
 
+    coste = costes.guardar(destino)
     return ResultadoPleno(destino, ruta_acta, pendientes, ruta_guia, objeciones,
-                          fallo_acta)
+                          fallo_acta, coste)
 
 
 # ── cierre de la ejecución ────────────────────────────────────────────────────

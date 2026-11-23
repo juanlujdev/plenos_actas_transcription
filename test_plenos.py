@@ -1648,6 +1648,7 @@ class _ResultadoFalso:
         self.pendientes = pendientes
         self.ruta_guia = ruta_guia
         self.objeciones = objeciones
+        self.coste = {}
 
 
 def _pantalla_final_texto(resultado) -> str:
@@ -1682,6 +1683,11 @@ try:
 
     _texto_con_objeciones_y_guia = _pantalla_final_texto(
         _ResultadoFalso(_falso_acta, _pendientes, _falso_guia, _objeciones_completas))
+    _conc = _ResultadoFalso(_falso_acta, [], None)
+    _conc.coste = {"assemblyai": 0.4, "openrouter": 4.25}
+    test("la pantalla final dice lo que ha costado el pleno",
+         "Este pleno ha costado: transcripción 0,40 $ · redacción 4,25 $ · total 4,65 $"
+         in _pantalla_final_texto(_conc), True)
     test("con objeciones y guía, también se menciona la guía",
          "guía de verificación" in _texto_con_objeciones_y_guia, True)
     test("y la pantalla muestra la cita de la objeción traducida",
@@ -3056,6 +3062,24 @@ test("plantilla propia instalada y la anterior al historial",
 volver_a_la_original("ordinaria", _cfg)
 test("volver a la original: la propia pasa al historial",
      ((_cfg / "plantillas" / "acta_ordinaria.docx").exists(), len(list((_cfg / "historial").iterdir()))), (False, 2))
+
+
+import costes as _cs
+_cdir = _Path(_tf.mkdtemp())
+test("coste habitual sin datos = por defecto", _cs.coste_habitual(_cdir), _cs.POR_DEFECTO)
+(_cdir / "2026-01-01").mkdir()
+(_cdir / "2026-01-01" / "costes.json").write_text(_js.dumps([
+    {"fecha_hora": "x", "assemblyai": 0.5, "openrouter": 4.0},
+    {"fecha_hora": "y", "assemblyai": None, "openrouter": 3.0}]), encoding="utf-8")
+test("coste habitual: media, AAI solo donde la hay", _cs.coste_habitual(_cdir),
+     {"assemblyai": 0.5, "openrouter": 3.5})
+_cs.reiniciar(); _cs.anotar("openrouter", 1.25); _cs.anotar("openrouter", 0.75)
+test("guardar: suma la ejecución", _cs.guardar(_cdir / "2026-01-01")["openrouter"], 2.0)
+test("guardar: añade a la lista", len(_js.loads((_cdir / "2026-01-01" / "costes.json").read_text(encoding="utf-8"))), 3)
+from asistente_plenos import motivo_sin_saldo
+test("sin saldo AssemblyAI", "AssemblyAI" in (motivo_sin_saldo("RuntimeError: Your current account balance is negative") or ""), True)
+test("sin saldo OpenRouter", "OpenRouter" in (motivo_sin_saldo("HTTPError: 402 Payment Required") or ""), True)
+test("otro error no es saldo", motivo_sin_saldo("ConnectionError"), None)
 
 
 # ── resultado ─────────────────────────────────────────────────────────────────

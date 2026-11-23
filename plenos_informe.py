@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 import corporacion
+import costes
 
 _MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
           "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10,
@@ -1105,7 +1106,8 @@ def _peticion(cuerpo: dict, intentos: int = 4) -> dict:
     (2, 4, 8 min). Va en streaming para que la conexión no quede ociosa mientras el modelo
     razona: si no, el proveedor la corta con un 504 idle timeout y, con temperatura 0,
     reintentar daría el mismo corte."""
-    cuerpo = {**cuerpo, "stream": True, "stream_options": {"include_usage": True}}
+    cuerpo = {**cuerpo, "stream": True, "stream_options": {"include_usage": True},
+              "usage": {"include": True}}
     for i in range(intentos):
         # timeout (conexión, entre trozos): con streaming no hay tope global.
         r = requests.post(
@@ -1171,6 +1173,7 @@ def _llamar_llm(instrucciones: str, contenido: str, schema: type[BaseModel],
     inicio = time.perf_counter()
     datos = _peticion(cuerpo)
     uso = datos.get("usage") or {}
+    costes.anotar("openrouter", uso.get("cost") or 0.0)
     razonamiento = (uso.get("completion_tokens_details") or {}).get("reasoning_tokens")
     detalle = f"{uso.get('prompt_tokens', 0):,} entrada + {uso.get('completion_tokens', 0):,} salida"
     if razonamiento:

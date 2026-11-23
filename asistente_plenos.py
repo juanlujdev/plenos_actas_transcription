@@ -39,6 +39,7 @@ from procesar_pleno import (ErrorDeDescarga, clave_pleno, dir_borrador, extraer_
 from pydantic import ValidationError
 
 import corporacion
+import costes
 from corporacion import Corporacion, ErrorCorporacion, Persona, Presidencia, Secretaria
 from plenos_acta import PLANTILLAS, validar_plantilla
 from plenos_informe import VOZ_MEZCLADA, VOZ_PUBLICO, muestras_por_etiqueta, normalizar_fecha
@@ -481,6 +482,41 @@ def reintentar_acta(consola: Consola, resultado, fecha: str):
         consola.decir("\n    Sigue sin poder guardarse.")
 
 
+def _dolares(cantidad: float, aprox: bool = True) -> str:
+    return f"{'~' if aprox else ''}{cantidad:.2f} $".replace(".", ",")
+
+
+def motivo_sin_saldo(texto: str) -> str | None:
+    """Un servicio sin saldo falla con un error técnico; aquí se traduce a lo que debe hacer la funcionaria."""
+    if re.search(r"balance is negative|insufficient (funds|balance)", texto, re.I):
+        return f"No queda saldo en el servicio de transcripción (AssemblyAI). Avisa a {RESPONSABLE}."
+    if re.search(r"\b402\b|insufficient credits", texto, re.I):
+        return f"No queda saldo en el servicio de redacción (OpenRouter). Avisa a {RESPONSABLE}."
+    return None
+
+
+def anunciar_coste_habitual(consola: Consola, con_transcripcion: bool = True) -> None:
+    habitual = costes.coste_habitual(dir_borrador(""))
+    redaccion = habitual["openrouter"]
+    raya = "  " + "═" * 56
+    if con_transcripcion:
+        transcripcion = habitual["assemblyai"]
+        linea = (f"transcripción {_dolares(transcripcion)} · redacción {_dolares(redaccion)}"
+                 f" · total {_dolares(transcripcion + redaccion)}")
+    else:
+        linea = f"redacción {_dolares(redaccion)}"
+    consola.decir(f"\n{raya}\n    LO QUE SUELE COSTAR UN PLENO: {linea}\n{raya}")
+
+
+def _linea_coste(coste: dict) -> str:
+    redaccion = coste.get("openrouter") or 0.0
+    transcripcion = coste.get("assemblyai")
+    if transcripcion is None:
+        return f"redacción {_dolares(redaccion, False)}"
+    return (f"transcripción {_dolares(transcripcion, False)} · redacción {_dolares(redaccion, False)}"
+            f" · total {_dolares(transcripcion + redaccion, False)}")
+
+
 def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> None:
     """Lo último que queda en pantalla: si esto se puede sellar o no."""
     raya = "  " + "═" * 56
@@ -544,6 +580,8 @@ def pantalla_final(consola: Consola, resultado, fecha: str, ruta_log: Path) -> N
 
     consola.decir("\n    RECUERDA: esto es un BORRADOR. Revísalo y complétalo")
     consola.decir("    como haces siempre antes de sellarlo.")
+    if resultado.coste:
+        consola.decir(f"\n    Este pleno ha costado: {_linea_coste(resultado.coste)}")
     consola.decir(f"\n    Está aquí:  {resultado.carpeta}")
     abrir_carpeta(consola, resultado.carpeta)
 
@@ -619,6 +657,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
     pdf = preguntar_convocatoria(consola)
     intervinientes = preguntar_intervinientes(consola)
     consola.decir(AVISO_DURACION)
+    anunciar_coste_habitual(consola)
     if not input("   ¿Empezamos?  (s/n)  ").strip().lower().startswith("s"):
         consola.decir("\n   No se ha hecho nada.")
         consola.cerrar()
@@ -651,8 +690,11 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
         pantalla_final(consola, resultado, fecha, consola.ruta_log)
     except Exception:
         # La traza va al registro; en pantalla solo una frase.
-        consola.anotar(traceback.format_exc())
+        traza = traceback.format_exc()
+        consola.anotar(traza)
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el acta.")
+        if sin_saldo := motivo_sin_saldo(traza):
+            consola.decir(f"   {sin_saldo}")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
         consola.decir("   del menú vuelve a intentarlo sin repetir la transcripción.")
         consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
@@ -704,7 +746,9 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
 
     consola.decir("\n   Vuelvo a redactar el documento a partir de la transcripción")
     consola.decir("   que ya está guardada. No descargo el vídeo ni lo transcribo otra")
-    consola.decir("   vez: son unos 5 minutos.\n")
+    consola.decir("   vez: son unos 5 minutos.")
+    anunciar_coste_habitual(consola, con_transcripcion=False)
+    consola.decir("")
 
     try:
         resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(
@@ -718,8 +762,11 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
         pantalla_final(consola, resultado, fecha, consola.ruta_log)
     except Exception:
         # Igual que en flujo_pleno_nuevo: sin mensaje ni registro cerrado el programa moriría.
-        consola.anotar(traceback.format_exc())
+        traza = traceback.format_exc()
+        consola.anotar(traza)
         consola.decir("\n   Ha ocurrido un problema y no he podido terminar el documento.")
+        if sin_saldo := motivo_sin_saldo(traza):
+            consola.decir(f"   {sin_saldo}")
         consola.decir("   Si la transcripción llegó a hacerse, está guardada: la opción 2")
         consola.decir("   del menú vuelve a intentarlo sin repetir la transcripción.")
         consola.decir(f"   Avisa a {RESPONSABLE} y envíale este archivo:")
