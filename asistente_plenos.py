@@ -509,11 +509,14 @@ def anunciar_coste_habitual(consola: Consola, con_transcripcion: bool = True) ->
 
 
 def _linea_coste(coste: dict) -> str:
-    redaccion = coste.get("openrouter") or 0.0
+    redaccion = coste.get("openrouter")
     transcripcion = coste.get("assemblyai")
+    texto_redaccion = "redacción no disponible" if redaccion is None else f"redacción {_dolares(redaccion, False)}"
     if transcripcion is None:
-        return f"redacción {_dolares(redaccion, False)}"
-    return (f"transcripción {_dolares(transcripcion, False)} · redacción {_dolares(redaccion, False)}"
+        return texto_redaccion
+    if redaccion is None:
+        return f"transcripción {_dolares(transcripcion, False)} · {texto_redaccion}"
+    return (f"transcripción {_dolares(transcripcion, False)} · {texto_redaccion}"
             f" · total {_dolares(transcripcion + redaccion, False)}")
 
 

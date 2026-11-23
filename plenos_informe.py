@@ -1173,7 +1173,8 @@ def _llamar_llm(instrucciones: str, contenido: str, schema: type[BaseModel],
     inicio = time.perf_counter()
     datos = _peticion(cuerpo)
     uso = datos.get("usage") or {}
-    costes.anotar("openrouter", uso.get("cost") or 0.0)
+    if uso.get("cost") is not None:
+        costes.anotar("openrouter", uso["cost"])
     razonamiento = (uso.get("completion_tokens_details") or {}).get("reasoning_tokens")
     detalle = f"{uso.get('prompt_tokens', 0):,} entrada + {uso.get('completion_tokens', 0):,} salida"
     if razonamiento:

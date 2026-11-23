@@ -1688,6 +1688,11 @@ try:
     test("la pantalla final dice lo que ha costado el pleno",
          "Este pleno ha costado: transcripción 0,40 $ · redacción 4,25 $ · total 4,65 $"
          in _pantalla_final_texto(_conc), True)
+    _nodisp = _ResultadoFalso(_falso_acta, [], None)
+    _nodisp.coste = {"assemblyai": 0.4, "openrouter": None}
+    _t_nodisp = _pantalla_final_texto(_nodisp)
+    test("sin coste de redacción: «no disponible» y ningún 0,00",
+         ("redacción no disponible" in _t_nodisp, "0,00" in _t_nodisp), (True, False))
     test("con objeciones y guía, también se menciona la guía",
          "guía de verificación" in _texto_con_objeciones_y_guia, True)
     test("y la pantalla muestra la cita de la objeción traducida",
@@ -3076,6 +3081,11 @@ test("coste habitual: media, AAI solo donde la hay", _cs.coste_habitual(_cdir),
 _cs.reiniciar(); _cs.anotar("openrouter", 1.25); _cs.anotar("openrouter", 0.75)
 test("guardar: suma la ejecución", _cs.guardar(_cdir / "2026-01-01")["openrouter"], 2.0)
 test("guardar: añade a la lista", len(_js.loads((_cdir / "2026-01-01" / "costes.json").read_text(encoding="utf-8"))), 3)
+_cs.reiniciar()
+_sin = _cs.guardar(_cdir / "2026-01-01")
+test("guardar sin coste anotado: None, no 0", (_sin["openrouter"], _sin["assemblyai"]), (None, None))
+test("una ejecución sin coste no cambia la media", _cs.coste_habitual(_cdir),
+     {"assemblyai": 0.5, "openrouter": (4.0 + 3.0 + 2.0) / 3})
 from asistente_plenos import motivo_sin_saldo
 test("sin saldo AssemblyAI", "AssemblyAI" in (motivo_sin_saldo("RuntimeError: Your current account balance is negative") or ""), True)
 test("sin saldo OpenRouter", "OpenRouter" in (motivo_sin_saldo("HTTPError: 402 Payment Required") or ""), True)

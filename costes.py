@@ -28,7 +28,7 @@ def _leer(ruta: Path) -> list[dict]:
 def guardar(carpeta: Path) -> dict:
     entrada = {"fecha_hora": datetime.now().isoformat(timespec="seconds"),
                "assemblyai": _acumulado.get("assemblyai"),
-               "openrouter": _acumulado.get("openrouter", 0.0)}
+               "openrouter": _acumulado.get("openrouter")}
     ruta = carpeta / "costes.json"
     ruta.write_text(json.dumps(_leer(ruta) + [entrada], indent=2), encoding="utf-8")
     return entrada

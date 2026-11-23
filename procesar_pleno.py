@@ -295,7 +295,8 @@ def transcribir_assemblyai(ruta: str, intervinientes: list[dict] | None = None) 
             continue
         fallos_seguidos = 0
         if estado["status"] == "completed":
-            costes.anotar("assemblyai", (estado.get("audio_duration") or 0) / 3600 * costes.AAI_PRECIO_HORA)
+            if estado.get("audio_duration") is not None:
+                costes.anotar("assemblyai", estado["audio_duration"] / 3600 * costes.AAI_PRECIO_HORA)
             return formatear_utterances(estado["utterances"])
         if estado["status"] == "error":
             raise RuntimeError(f"AssemblyAI: {estado.get('error')}")
