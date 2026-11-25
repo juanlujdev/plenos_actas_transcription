@@ -306,3 +306,9 @@ entrega nueva completa a la secretaria. CLAUDE.md actualizado.
 ## [2026-11-23] decisión | Corporación, presidencia y plantillas configurables
 La corporación, quién preside y las plantillas pasan de constantes en código a datos editables
 desde el asistente (opción 3), con semilla inmutable. Página: [[corporacion-configurable]].
+
+## [2026-11-25] ingest | Spec, plan e implementación de la corporación configurable
+Nueva fuente [[2026-11-23-corporacion-configurable-design]] con lo que decidió el usuario, lo
+que se construyó, lo que corrigieron las revisiones (incluida la revisión final de la rama) y
+lo pendiente. Ampliada [[corporacion-configurable]] con las decisiones de la revisión final y
+el estado de la rama (sin integrar). Overview e índice actualizados.

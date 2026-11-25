@@ -17,6 +17,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[acta-oficial-11-febrero-2026]] | acta borrador del Ayuntamiento en PDF (documento oficial) | 2026-08-23 |
 | [[2026-09-07-guia-forense-y-literal-de-escape]] | conversación de trabajo del 2026-09-07 (sin spec ni plan) | 2026-09-07 |
 | [[2026-09-15-claves-del-ayuntamiento-y-errores-http]] | conversación de trabajo del 2026-09-11 al 2026-09-15 (sin spec ni plan) | 2026-09-15 |
+| [[2026-11-23-corporacion-configurable-design]] | `docs/superpowers/specs/2026-11-23-corporacion-configurable-design.md` + plan + sesión de implementación | 2026-11-25 |
 
 ## Entidades
 
@@ -42,7 +43,7 @@ Catálogo de la documentación viva del proyecto (patrón LLM Wiki de Karpathy).
 | [[intervinientes-y-reglas-tras-el-7-x]] | Qué falló en el acta del 3-IX según las quejas del 7-X y qué reglas, prompts y código se tocaron; por qué los intervinientes son pista y no prueba | 2026-10-10 |
 | [[revisor-final-descartado]] | Por qué la revisión de forma del acta se hizo con prompts y código, y no con un cuarto agente | 2026-08-29 |
 | [[asistente-para-la-funcionaria]] | Por qué el asistente para la funcionaria se empaqueta con PyInstaller, con claves en fichero de texto, yt-dlp autoactualizable y sin capacidad de publicar | 2026-09-15 |
-| [[corporacion-configurable]] | La corporación, la presidencia y las plantillas como datos editables desde el asistente: semilla inmutable, corporación en el mensaje, validación por render | 2026-11-23 |
+| [[corporacion-configurable]] | La corporación, la presidencia y las plantillas como datos editables desde el asistente: semilla inmutable, corporación en el mensaje, validación por render | 2026-11-25 |
 
 ## Síntesis
 

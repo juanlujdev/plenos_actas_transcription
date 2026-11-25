@@ -45,3 +45,9 @@ Ayuntamiento, mediante un ejecutable empaquetado con PyInstaller que envuelve el
 código sin duplicarlo ([[asistente-para-la-funcionaria]]). Eso convierte cada cambio en el
 código en un cambio que hay que reempaquetar: un `.exe` sin reconstruir hace que ella
 pruebe la versión anterior y su feedback no sirva.
+
+En noviembre de 2026, tras una moción de censura, la corporación, quién preside y las
+plantillas dejaron de estar en el código. Ahora son datos que la funcionaria edita desde el
+propio asistente, y cada pleno guarda la corporación con la que se procesó, de modo que
+rehacer un acta antigua no la reescribe con el gobierno nuevo
+([[corporacion-configurable]]).
