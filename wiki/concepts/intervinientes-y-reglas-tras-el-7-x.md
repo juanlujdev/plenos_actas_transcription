@@ -1,6 +1,6 @@
 ---
 type: concept
-date_updated: 2026-11-23
+date_updated: 2026-11-25
 source_count: 1
 ---
 
@@ -18,7 +18,7 @@ y en código, no con un cuarto agente ([[revisor-final-descartado]]).
 | Respuesta del equipo de gobierno perdida en los ruegos | Regla 14 bis (solo si es concluyente) |
 | Lugares mal oídos («visera» por «pesquera») | `TOPONIMOS` → regla 20 y keyterms de AssemblyAI |
 | «Teniente alcalde» vs «alcaldesa» | `normalizar_cargos` en `plenos_acta.py`, determinista |
-| Voces sin identificar | El asistente pregunta intervinientes y apodos (`INTERVINIENTES_SESION`) |
+| Voces sin identificar | El asistente pregunta intervinientes y apodos (`INTERVINIENTES_SESION`); retirado del asistente el 2026-11-25 (ver abajo) |
 
 ## Por qué los intervinientes son una pista y no una prueba
 
@@ -27,6 +27,16 @@ asignarlos todos. Por eso el bloque no prueba asistencia, no rellena el mapa de 
 ([[diarizacion-como-andamiaje]]) y un apodo ambiguo no identifica a nadie. Sirve para
 reconocer «Nando» o «Chari» cuando alguien los nombra, y para dar el nombre correcto a
 AssemblyAI antes de que lo destroce.
+
+**2026-11-25: el asistente deja de preguntarlos.** Se añadieron antes de que existieran
+[[voces-confirmadas-por-la-secretaria]] y la corporación editable con apodos
+([[corporacion-configurable]]), que cubren lo mismo con datos más fiables. La pregunta, además,
+pedía algo que quien procesa el pleno a menudo no sabe: lo procesa semanas después, o no
+estuvo, y no recuerda quién habló. El público tampoco necesita lista: en el acta se le nombra
+«un vecino asistente» y en la confirmación de voces se elige «Público». Un concejal ausente o
+que no habla no necesita nada: la asistencia sale de la grabación, nunca de una lista. La
+opción `--intervinientes` sigue en el CLI, y `--rehacer-informe` reutiliza la lista guardada
+en los plenos antiguos que la tengan.
 
 ## Decisión sobre el cargo de quien preside
 

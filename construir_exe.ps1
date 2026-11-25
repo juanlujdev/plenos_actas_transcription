@@ -58,6 +58,7 @@ if (-not (Test-Path $yt)) {
 $escritorio = Join-Path ([Environment]::GetFolderPath("Desktop")) "Actas de Plenos del Ayuntamiento"
 if (Test-Path $escritorio) {
     try {
+        Copy-Item (Join-Path $destino "LÉEME - Cómo generar un acta.txt") $escritorio -Force
         Copy-Item (Join-Path $destino "Generar acta de un pleno.exe") $escritorio -Force
         Write-Host "Copiado tambien a: $escritorio"
     } catch {

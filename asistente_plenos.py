@@ -334,29 +334,6 @@ def preguntar_convocatoria(consola: Consola) -> str | None:
             consola.decir("   JPEG guardada en este ordenador.")
 
 
-def preguntar_intervinientes(consola: Consola) -> list[dict] | None:
-    """Pregunta quién interviene y cómo lo llaman en la sala (opcional: Enter la salta)."""
-    consola.decir("\n   ¿Quieres decirme quién interviene en este pleno?")
-    consola.decir("")
-    consola.decir("   Me ayuda a escribir bien los nombres y a saber a quién se refieren")
-    consola.decir("   cuando dicen, por ejemplo, «Chari». En el acta se seguirá usando el")
-    consola.decir("   nombre oficial completo.")
-    consola.decir("")
-    consola.decir("   Escribe el nombre completo de una persona y pulsa Enter. Te")
-    consola.decir("   preguntaré cómo la llaman en el pleno. Cuando hayas terminado, pulsa")
-    consola.decir("   Enter sin escribir nada. Si no quieres hacerlo, pulsa Enter ahora.")
-    personas: list[dict] = []
-    while True:
-        nombre = input("\n   Nombre completo:  ").strip()
-        if not nombre:
-            break
-        apodos = input(f"   ¿Cómo llaman a {nombre} en el pleno? (Enter si por su nombre):  ").strip()
-        personas.append({"nombre": nombre,
-                         "apodos": [a.strip() for a in apodos.split(",") if a.strip()]})
-        consola.anotar(f"interviniente: {nombre} · apodos={apodos or '—'}")
-    return personas or None
-
-
 def preguntar_grabacion_local(consola: Consola) -> str | None:
     """Alternativa cuando YouTube bloquea la descarga; AssemblyAI acepta vídeo tal cual."""
     consola.decir("\n   Si tienes la grabación guardada en este ordenador, arrástrala")
@@ -658,7 +635,6 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
             return
 
     pdf = preguntar_convocatoria(consola)
-    intervinientes = preguntar_intervinientes(consola)
     consola.decir(AVISO_DURACION)
     anunciar_coste_habitual(consola)
     consola.decir(f"\n   {corporacion.aviso_presidencia(corporacion.en_uso())}\n")
@@ -675,8 +651,7 @@ def flujo_pleno_nuevo(inst: Instalacion, pantalla) -> None:
 
     def tarea(fuente=local):
         return procesar_pleno(fuente, video_id, titulo, fecha, None if local else url,
-                              convocatoria=convocatoria, intervinientes=intervinientes,
-                              tipo=tipo, elegir_voces=lambda t: preguntar_voces(
+                              convocatoria=convocatoria, tipo=tipo, elegir_voces=lambda t: preguntar_voces(
                                   consola, t, None if local else url))
 
     try:
@@ -739,14 +714,10 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
     if not (dir_borrador(clave) / f"{fecha}-convocatoria.pdf").exists():
         pdf = preguntar_convocatoria(consola)
 
-    intervinientes = None
     try:
         entrada = json.loads((dir_borrador(clave) / "entrada.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         entrada = {}
-    guardados = entrada.get("intervinientes")
-    if not guardados:
-        intervinientes = preguntar_intervinientes(consola)
 
     consola.decir("\n   Vuelvo a redactar el documento a partir de la transcripción")
     consola.decir("   que ya está guardada. No descargo el vídeo ni lo transcribo otra")
@@ -756,7 +727,7 @@ def rehacer_pleno(inst: Instalacion, pantalla, clave: str) -> None:
 
     try:
         resultado = ejecutar_pipeline(consola, lambda: _rehacer_informe(
-            clave, pdf, intervinientes,
+            clave, pdf,
             elegir_voces=lambda t: preguntar_voces(consola, t, entrada.get("video_url"))))
         if resultado is None:
             consola.decir("\n   No he podido rehacer ese pleno: le falta la transcripción.")

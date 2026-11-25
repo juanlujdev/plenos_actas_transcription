@@ -91,14 +91,18 @@ El programa te irá preguntando, paso a paso:
      Si no lo tienes a mano, simplemente pulsa Enter sin
      escribir ni arrastrar nada, y el programa seguirá sin él.
 
-  e) Quién interviene en el pleno (opcional). El programa te pedirá,
-     una a una, las personas que hablan: escribe el nombre completo
-     y pulsa Enter; después te preguntará cómo la llaman en el
-     pleno (por ejemplo "Chari" o "Nando"; si la llaman por su
-     nombre, pulsa Enter sin escribir nada). Cuando hayas
-     terminado, pulsa Enter sin escribir nada. Ayuda a escribir bien
-     los nombres y a saber a quién se refieren; en el acta saldrá
-     siempre el nombre oficial. Si no quieres, pulsa Enter.
+  e) Antes de empezar te enseña dos cosas, para que las compruebes:
+
+       · Lo que suele costar un pleno (la transcripción y la
+         redacción), según lo que han costado los anteriores.
+       · Quién figurará presidiendo el pleno en el acta y por qué
+         (por ejemplo, "por delegación del Alcalde"). Si no es
+         correcto, contesta "n" a la pregunta siguiente y cámbialo
+         con la opción "3" del menú (apartado 8).
+
+     No hace falta que le digas quién habló en el pleno: los
+     nombres de la corporación ya los tiene, y las voces se
+     reconocen después, en el apartado 5.
 
   f) Por último te preguntará si quieres empezar. Escribe "s"
      y pulsa Enter.
@@ -141,8 +145,11 @@ YouTube, debajo de cada frase hay un enlace que puedes copiar y
 pegar en el navegador para oírla en ese momento. Luego te
 pregunta quién habla en esa voz y eliges un número:
 
-  · uno de los concejales o la secretaria;
-  · "Público": un vecino o una vecina;
+  · uno de los concejales o la secretaria (salen los que tengas
+    guardados en la corporación, apartado 8);
+  · "Público": un vecino o una vecina. Da igual cuántos vecinos
+    hablen o cómo se llamen: en el acta se les nombra como
+    "un vecino asistente", nunca por su nombre;
   · "Hay varias personas mezcladas en esta voz": cuando la misma
     letra suena a dos personas distintas;
   · "No lo sé": el programa intentará reconocerla él; si no
@@ -150,6 +157,12 @@ pregunta quién habla en esa voz y eliges un número:
 
 Al terminar te enseña un resumen y te pregunta si es correcto:
 escribe "s" para seguir, o "n" para volver a contestar.
+
+Si un concejal no ha venido o no ha hablado en todo el pleno,
+simplemente no aparecerá ninguna voz suya: no tienes que hacer
+nada. Quién asistió y quién faltó lo saca el programa de lo que
+se dice en la grabación (por ejemplo, al pasar lista), nunca de la
+lista de la corporación.
 
 Lo que contestes el programa lo da por bueno: es lo más fiable
 que tiene, y con ello el acta sale con muchos menos "concejal no
@@ -168,7 +181,9 @@ Cuando termina, el programa abre solo la carpeta donde ha
 guardado todo, dentro de "Actas generadas", en una carpeta con
 la fecha y el tipo del pleno (por ejemplo, 2026-10-07-ordinario).
 
-Ahí encontrarás el documento Word con el borrador del acta.
+Ahí encontrarás el documento Word con el borrador del acta. En la
+pantalla final verás también lo que ha costado ese pleno; si un
+servicio no ha informado de su coste, pone "no disponible".
 
 En esa misma carpeta hay también un archivo llamado "guía de
 verificación", que se abre con doble clic igual que una página
@@ -238,6 +253,14 @@ Para cambiar una plantilla, arrastra el documento de Word (.docx)
 hasta la ventana y pulsa Enter. El programa comprueba que sirve
 antes de aceptarlo; si no sirve, te dice por qué y sigue usando
 la de antes. También puedes volver a la plantilla original.
+
+Para meter un equipo de gobierno nuevo (tras una moción o unas
+elecciones), usa "escribir la corporación entera". De cada persona
+te pide el nombre completo, si es hombre o mujer, su cargo, su
+partido, si es del gobierno o de la oposición y cómo la llaman en
+el pleno (por ejemplo "Chari"; si la llaman por su nombre, pulsa
+Enter). Si te equivocas con alguien, antes de terminar puedes
+corregirlo o quitarlo de la lista.
 
 Lo que cambies vale para las actas que crees a partir de ese
 momento. Las actas de plenos anteriores se siguen haciendo con

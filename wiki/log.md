@@ -312,3 +312,9 @@ Nueva fuente [[2026-11-23-corporacion-configurable-design]] con lo que decidió 
 que se construyó, lo que corrigieron las revisiones (incluida la revisión final de la rama) y
 lo pendiente. Ampliada [[corporacion-configurable]] con las decisiones de la revisión final y
 el estado de la rama (sin integrar). Overview e índice actualizados.
+
+## [2026-11-25] decisión | El asistente deja de preguntar los intervinientes
+La pregunta «¿Quién interviene en este pleno?» se quita del asistente: la corporación con apodos
+y la confirmación de voces la hacen innecesaria, y quien procesa a menudo no sabe quién habló.
+Sigue en el CLI. LÉEME (opción 4) y README actualizados; el LÉEME se copia también al Escritorio.
+Ver [[intervinientes-y-reglas-tras-el-7-x]].

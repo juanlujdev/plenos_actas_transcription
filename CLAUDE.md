@@ -172,8 +172,12 @@ Tests: `python test_plenos.py`. No hay pytest ni linter.
   «no lo sé». Van a `entrada.json` (`voces`), a los cuatro roles (`bloque_voces`) y, al
   acabar el bucle, al mapa de voces (`aplicar_voces`). `--rehacer-informe` las reutiliza.
   Detalle en `wiki/concepts/voces-confirmadas-por-la-secretaria.md`.
-- **Los intervinientes son una ayuda, no una prueba.** El asistente (y `--intervinientes
-  fichero.txt`, una persona por línea: `Nombre completo = cómo la llaman`) recoge quién
+- **Los intervinientes son una ayuda, no una prueba, y el asistente ya no los pregunta.**
+  Solo existen en el CLI (`--intervinientes fichero.txt`, una persona por línea:
+  `Nombre completo = cómo la llaman`). El asistente dejó de pedirlos el 2026-11-25: la
+  corporación (con sus apodos) ya está configurada en la opción 3 y las voces se confirman
+  tras transcribir; quien procesa el pleno semanas después, o sin haber estado, no sabe quién
+  habló, y el público ni se nombra ni hace falta listarlo. Recogen quién
   interviene y los apodos de ESE pleno (`Chari`, `Nando`). Van a `entrada.json`, a los
   keyterms de AssemblyAI (`keyterms_del_pleno`) y al mensaje de generador, auditor y
   corrector (`bloque_intervinientes`; reglas en `INTERVINIENTES_SESION`). Se contrastan con

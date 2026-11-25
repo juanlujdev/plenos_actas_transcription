@@ -72,9 +72,27 @@ funcionaria del Ayuntamiento genere el borrador sin terminal ni jerga técnica.
 powershell -ExecutionPolicy Bypass -File .\construir_exe.ps1
 ```
 
-Deja el ejecutable listo en `entrega\Actas de Plenos del Ayuntamiento\`. Las claves de API
-van en `Configuración (no tocar)\configuracion.env`, junto al `.exe`, para poder cambiarlas
-sin reconstruirlo.
+Deja el ejecutable listo en `entrega\Actas de Plenos del Ayuntamiento\` (y copia el `.exe`
+y el LÉEME a la carpeta de pruebas del Escritorio, si existe). Las claves de API van en
+`Configuración (no tocar)\configuracion.env`, junto al `.exe`, para poder cambiarlas sin
+reconstruirlo.
+
+Menú del asistente:
+
+1. **Crear el acta de un pleno nuevo**: vídeo o audio, fecha, tipo, convocatoria. Antes de
+   empezar enseña el coste habitual y quién figurará presidiendo; tras transcribir se
+   detiene para que la secretaría confirme quién es cada voz.
+2. **Volver a generar el documento** de un pleno ya transcrito, con la corporación que
+   tenía entonces.
+3. **Cambiar la corporación o las plantillas**: altas, bajas, corporación nueva tras una
+   moción o unas elecciones, quién preside y en virtud de qué, la Secretaria y las
+   plantillas `.docx` (se validan con un acta de prueba antes de aceptarlas). Se guarda en
+   `Configuración (no tocar)\corporacion.json` y `plantillas\`, con copia de cada versión
+   en `historial\`. La corporación de partida es `corporacion_inicial.json`, que no se
+   edita.
+4. **Ver las instrucciones**: muestra el `LÉEME` que está junto al `.exe`
+   (`asistente/LEEME.txt` en el repo).
+5. Salir.
 
 > **Todo cambio en el código va también al `.exe`.** PyInstaller congela el código: un
 > script tocado y un `.exe` sin reconstruir hacen que la funcionaria pruebe la versión
